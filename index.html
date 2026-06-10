@@ -424,7 +424,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.5.1 · 10/06/2026</div>
+    <div class="sidebar-footer">v1.5.2 · 10/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -666,7 +666,7 @@ function render() {
   if (currentView === 'today') { renderToday(); return; }
 
   // Build toolbar
-  const owners = [...new Set(allItems.map(i=>i.owner))].sort();
+  const owners = [...new Set(allItems.map(i=>i.owner))].filter(o => o === ME || !muted.has(o)).sort();
   const toolbarHtml = `
     <div class="toolbar">
       <select id="f-owner" onchange="filterOwner=this.value;render()">
