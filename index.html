@@ -66,6 +66,16 @@
   }
   .btn-sync:hover { border-color: var(--text3); color: var(--text); }
   /* ── Multiselect ── */
+  .select-all-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; margin-bottom: 8px;
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 8px; cursor: pointer;
+    transition: border-color 0.1s;
+  }
+  .select-all-bar:hover { border-color: var(--red); }
+  .select-all-bar .check { flex-shrink: 0; }
+  .select-all-label { font-size: 12px; color: var(--text2); user-select: none; }
   .btn-multiselect {
     font-size: 12px; padding: 5px 12px;
     background: transparent; color: var(--text2);
@@ -585,8 +595,8 @@ function buildMeetingNav() {
     const isMuted = mutedMeetings.has(sk);
     const safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const safeSk = sk.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return '<div class="nav-item' + (isMuted ? ' muted-meeting' : '') + '" style="' + (isMuted ? 'opacity:0.45' : '') + '" data-view="meeting-' + escAttr(name) + '">'
-      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;cursor:pointer"'
+    return '<div class="nav-item' + (isMuted ? ' muted-meeting' : '') + '" style="display:flex;align-items:center;justify-content:space-between;' + (isMuted ? 'opacity:0.45' : '') + '" data-view="meeting-' + escAttr(name) + '">'
+      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;cursor:pointer"'
       + ' onclick="switchMeeting(\'' + safeName + '\',this.closest(\'.nav-item\'))">' + escHtml(name) + '</span>'
       + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'
       + (isMuted ? '<span class="nav-count" style="color:var(--text3)">muted</span>' : '<span class="nav-count">' + count + '</span>')
@@ -718,8 +728,12 @@ function render() {
   let html = statsHtml + toolbarHtml;
 
   if (currentView === 'mine') {
+    const allSelectedMine = items.length > 0 && items.every(i => selected.has(i.id));
+    if (multiselect) html += `<div class="select-all-bar" onclick="selectAllVisible()"><div class="check${allSelectedMine?' done':''}" style="pointer-events:none"></div><span class="select-all-label">${allSelectedMine ? 'Deselect all' : 'Select all'} (${items.length})</span></div>`;
     html += `<div class="section-label">Your open items</div><div class="item-list">${items.map(itemCard).join('')}</div>`;
   } else {
+    const allSelectedAll = items.length > 0 && items.every(i => selected.has(i.id));
+    if (multiselect) html += `<div class="select-all-bar" onclick="selectAllVisible()"><div class="check${allSelectedAll?' done':''}" style="pointer-events:none"></div><span class="select-all-label">${allSelectedAll ? 'Deselect all' : 'Select all'} (${items.length})</span></div>`;
     const grouped = {};
     items.forEach(i => {
       if (!grouped[i.owner]) grouped[i.owner] = [];
@@ -1109,6 +1123,18 @@ function escAttr(s) {
 
 
 // ── Multiselect ───────────────────────────────────────────────────────────────
+
+function selectAllVisible() {
+  const items = getFilteredItems();
+  const allSelected = items.every(i => selected.has(i.id));
+  if (allSelected) {
+    items.forEach(i => selected.delete(i.id));
+  } else {
+    items.forEach(i => selected.add(i.id));
+  }
+  renderBulkBar();
+  render();
+}
 
 function toggleMultiselect() {
   multiselect = !multiselect;
