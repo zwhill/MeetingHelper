@@ -414,7 +414,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.5.0 · 10/06/2026</div>
+    <div class="sidebar-footer">v1.5.1 · 10/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -429,6 +429,7 @@ const ME = 'Zach';
 const S = {
   done: 'ai_done_v3',
   muted: 'ai_muted_v3',
+  mutedMeetings: 'ai_muted_meetings_v3',
   likely: 'ai_likely_v3',
   dismissed: 'ai_dismissed_v3',
   expanded: 'ai_expanded_v3',
@@ -447,6 +448,7 @@ let todayWindow = 1; // days to show: 1=today only, 3=next 3 days
 
 const done = new Set(JSON.parse(localStorage.getItem(S.done)||'[]'));
 const muted = new Set(JSON.parse(localStorage.getItem(S.muted)||'[]'));
+const mutedMeetings = new Set(JSON.parse(localStorage.getItem(S.mutedMeetings)||'[]'));
 const likely = new Set(JSON.parse(localStorage.getItem(S.likely)||'[]'));
 const dismissed = new Set(JSON.parse(localStorage.getItem(S.dismissed)||'[]'));
 const expanded = new Set(JSON.parse(localStorage.getItem(S.expanded)||'[]'));
@@ -455,6 +457,7 @@ function save() {
   try {
     localStorage.setItem(S.done, JSON.stringify([...done]));
     localStorage.setItem(S.muted, JSON.stringify([...muted]));
+    localStorage.setItem(S.mutedMeetings, JSON.stringify([...mutedMeetings]));
     localStorage.setItem(S.likely, JSON.stringify([...likely]));
     localStorage.setItem(S.dismissed, JSON.stringify([...dismissed]));
     localStorage.setItem(S.expanded, JSON.stringify([...expanded]));
@@ -570,13 +573,36 @@ function buildMeetingNav() {
       counts[i.meeting] = (counts[i.meeting]||0) + 1;
     }
   });
-  const meetings = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,8);
+  // Include muted meetings so they can be unmuted
+  mutedMeetings.forEach(sk => {
+    const match = allItems.find(i => seriesKey(i.meeting) === sk);
+    if (match && counts[match.meeting] === undefined) counts[match.meeting] = 0;
+  });
+  const meetings = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,12);
   const nav = document.getElementById('meeting-nav');
-  nav.innerHTML = meetings.map(([name, count]) => `
-    <div class="nav-item" data-view="meeting-${name}" onclick="switchMeeting('${name.replace(/'/g,"\\'")}',this)">
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">${name}</span>
-      <span class="nav-count">${count}</span>
-    </div>`).join('');
+  nav.innerHTML = meetings.map(([name, count]) => {
+    const sk = seriesKey(name);
+    const isMuted = mutedMeetings.has(sk);
+    const safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const safeSk = sk.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return '<div class="nav-item' + (isMuted ? ' muted-meeting' : '') + '" style="' + (isMuted ? 'opacity:0.45' : '') + '" data-view="meeting-' + escAttr(name) + '">'
+      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;cursor:pointer"'
+      + ' onclick="switchMeeting(\'' + safeName + '\',this.closest(\'.nav-item\'))">' + escHtml(name) + '</span>'
+      + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'
+      + (isMuted ? '<span class="nav-count" style="color:var(--text3)">muted</span>' : '<span class="nav-count">' + count + '</span>')
+      + '<span style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 4px;border-radius:3px;transition:color 0.1s"'
+      + ' title="' + (isMuted ? 'Unmute' : 'Mute') + '"'
+      + ' onmouseenter="this.style.color=\'var(--red)\'" onmouseleave="this.style.color=\'var(--text3)\'"'
+      + ' onclick="event.stopPropagation();toggleMuteMeeting(\'' + safeSk + '\')">'
+      + (isMuted ? '🔇' : '🔕')
+      + '</span></div></div>';
+  }).join('');
+}
+
+function toggleMuteMeeting(sk) {
+  if (mutedMeetings.has(sk)) mutedMeetings.delete(sk);
+  else mutedMeetings.add(sk);
+  save(); buildMeetingNav(); updateNavCounts(); render();
 }
 
 function updateNavCounts() {
@@ -706,6 +732,7 @@ function getFilteredItems() {
   let items = allItems.filter(i => {
     if (done.has(i.id) || dismissed.has(i.id)) return false;
     if (muted.has(i.owner) && i.owner !== ME) return false;
+    if (mutedMeetings.has(seriesKey(i.meeting))) return false;
     if (filterOwner !== 'all' && i.owner !== filterOwner) return false;
     if (searchVal && !i.text.toLowerCase().includes(searchVal.toLowerCase()) && !i.owner.toLowerCase().includes(searchVal.toLowerCase())) return false;
     if (currentView === 'mine' && i.owner !== ME) return false;
