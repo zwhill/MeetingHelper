@@ -295,6 +295,82 @@
   /* ── Spinner ── */
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border2); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+
+  /* ── Today view ── */
+  .today-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .today-date { font-size: 20px; font-weight: 600; color: var(--text); }
+  .today-sub { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+  .today-window {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .today-window-btn {
+    font-size: 11px; padding: 3px 10px; border-radius: 99px;
+    background: transparent; color: var(--text3);
+    border: 1px solid var(--border2); cursor: pointer; font-family: var(--font);
+    transition: all 0.15s;
+  }
+  .today-window-btn.active { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+  .today-window-btn:hover:not(.active) { border-color: var(--text3); color: var(--text); }
+
+  .day-group { margin-bottom: 28px; }
+  .day-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text3); margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .day-label span { color: var(--text2); margin-left: 6px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+
+  .today-meeting {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+  }
+  .today-meeting.has-mine { border-left: 3px solid var(--red); }
+  .today-meeting.empty-meeting { opacity: 0.45; }
+
+  .today-meeting-hdr {
+    padding: 11px 14px; cursor: pointer; display: flex;
+    align-items: center; gap: 12px;
+    transition: background 0.1s;
+  }
+  .today-meeting-hdr:hover { background: var(--surface2); }
+
+  .today-time {
+    font-size: 11px; color: var(--text3); font-family: var(--mono);
+    flex-shrink: 0; width: 52px;
+  }
+  .today-meeting-name { font-size: 13px; font-weight: 500; color: var(--text); flex: 1; }
+  .today-meeting-meta { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+  .today-meeting-body {
+    border-top: 1px solid var(--border); padding: 12px 14px 14px;
+    display: none;
+  }
+  .today-meeting-body.open { display: block; }
+
+  .today-summary {
+    font-size: 13px; color: var(--text2); line-height: 1.65;
+    margin-bottom: 12px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .today-summary-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text3); margin-bottom: 5px;
+  }
+  .today-no-summary {
+    font-size: 12px; color: var(--text3); font-style: italic; margin-bottom: 12px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  .today-items-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text3); margin-bottom: 8px;
+  }
+  .today-empty-items {
+    font-size: 12px; color: var(--text3); font-style: italic;
+  }
+
 </style>
 </head>
 <body>
@@ -311,6 +387,9 @@
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-nav">
       <div class="nav-section">Views</div>
+      <div class="nav-item" data-view="today" onclick="switchView('today',this)">
+        Today <span class="nav-count" id="nav-today">—</span>
+      </div>
       <div class="nav-item active" data-view="mine" onclick="switchView('mine',this)">
         My items <span class="nav-count" id="nav-mine">—</span>
       </div>
@@ -335,7 +414,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.4.1 · 10/06/2025</div>
+    <div class="sidebar-footer">v1.5.0 · 10/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -363,6 +442,8 @@ let filterOwner = 'all';
 let multiselect = false;
 const selected = new Set();
 let sortOrder = 'newest';
+let allSummaries = [];
+let todayWindow = 1; // days to show: 1=today only, 3=next 3 days
 
 const done = new Set(JSON.parse(localStorage.getItem(S.done)||'[]'));
 const muted = new Set(JSON.parse(localStorage.getItem(S.muted)||'[]'));
@@ -384,12 +465,14 @@ function save() {
 
 async function loadItems() {
   try {
-    const [itemsRes, statusRes] = await Promise.all([
+    const [itemsRes, statusRes, summariesRes] = await Promise.all([
       fetch(`${WORKER}/items`),
-      fetch(`${WORKER}/status`)
+      fetch(`${WORKER}/status`),
+      fetch(`${WORKER}/summaries`),
     ]);
     allItems = await itemsRes.json();
     const status = await statusRes.json();
+    allSummaries = await summariesRes.json();
 
     // Run auto-resolve detection on loaded items
     detectAutoResolves();
@@ -498,10 +581,20 @@ function buildMeetingNav() {
 
 function updateNavCounts() {
   const open = allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+  const todayMine = open.filter(i => i.owner === ME && isTodayOrSoon(i.meetingDate, 1)).length;
+  document.getElementById('nav-today').textContent = todayMine || '—';
   document.getElementById('nav-mine').textContent = open.filter(i=>i.owner===ME).length;
   document.getElementById('nav-all').textContent = open.length;
   document.getElementById('nav-likely').textContent = [...likely].filter(id => !done.has(id) && !dismissed.has(id)).length;
   document.getElementById('nav-done').textContent = done.size;
+}
+
+function isTodayOrSoon(dateStr, windowDays) {
+  if (!dateStr) return false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(dateStr + 'T00:00:00');
+  const diff = (d - today) / 86400000;
+  return diff >= -1 && diff < windowDays; // include yesterday as grace
 }
 
 function switchView(view, el) {
@@ -527,6 +620,7 @@ function render() {
 
   if (currentView === 'context') { renderContext(); return; }
   if (currentView === 'people') { renderPeople(); return; }
+  if (currentView === 'today') { renderToday(); return; }
 
   // Build toolbar
   const owners = [...new Set(allItems.map(i=>i.owner))].sort();
@@ -687,6 +781,158 @@ function bindItemEvents() {
   });
   document.querySelectorAll('[data-dismiss]').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); dismissed.add(el.dataset.dismiss); likely.delete(el.dataset.dismiss); save(); updateNavCounts(); render(); });
+  });
+}
+
+
+// ── Today view ────────────────────────────────────────────────────────────────
+
+async function renderToday() {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="loading"><span class="spinner"></span>Loading calendar...</div>';
+
+  // Fetch calendar events from Worker KV (populated by sync script)
+  let calEvents = [];
+  try {
+    const res = await fetch(`${WORKER}/calendar`);
+    if (res.ok) calEvents = await res.json();
+  } catch(e) {
+    // Calendar fetch failed — render with action items only
+  }
+
+  // Filter out Viva/solo blocks
+  const SKIP_KEYWORDS = ['lunch','breakfast','focus time','viva insights','summer hours','no meeting'];
+  calEvents = calEvents.filter(ev => {
+    const subj = (ev.subject||'').toLowerCase();
+    if (SKIP_KEYWORDS.some(k => subj.includes(k))) return false;
+    if (!ev.attendees || ev.attendees.length <= 1) return false;
+    return true;
+  });
+
+  // Build date buckets
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dateLabels = [];
+  for (let i = 0; i < todayWindow; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    dateLabels.push(d.toISOString().slice(0,10));
+  }
+
+  // Group cal events by date
+  const byDate = {};
+  dateLabels.forEach(d => byDate[d] = []);
+  calEvents.forEach(ev => {
+    const evDate = ev.start ? ev.start.slice(0,10) : null;
+    if (evDate && byDate[evDate] !== undefined) byDate[evDate].push(ev);
+  });
+
+  // Build HTML
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+
+  let html = `
+    <div class="today-header">
+      <div>
+        <div class="today-date">${todayStr}</div>
+        <div class="today-sub">${calEvents.length} meetings · ${allItems.filter(i=>i.owner===ME&&!done.has(i.id)&&!dismissed.has(i.id)).length} open items</div>
+      </div>
+      <div class="today-window">
+        <button class="today-window-btn${todayWindow===1?' active':''}" onclick="todayWindow=1;renderToday()">Today</button>
+        <button class="today-window-btn${todayWindow===3?' active':''}" onclick="todayWindow=3;renderToday()">3 days</button>
+      </div>
+    </div>`;
+
+  dateLabels.forEach(dateStr => {
+    const events = byDate[dateStr] || [];
+    const d = new Date(dateStr + 'T00:00:00');
+    const isToday = dateStr === today.toISOString().slice(0,10);
+    const dayName = isToday ? 'Today' : d.toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
+
+    // If multi-day view and no events for this day, skip
+    if (todayWindow > 1 && events.length === 0) return;
+
+    html += `<div class="day-group"><div class="day-label">${dayName}<span>${events.length} meeting${events.length!==1?'s':''}</span></div>`;
+
+    if (events.length === 0) {
+      html += `<div class="empty" style="padding:20px">No meetings scheduled.</div>`;
+    } else {
+      events.forEach(ev => {
+        const sk = seriesKey(ev.subject || '');
+        const evItems = allItems.filter(i =>
+          !done.has(i.id) && !dismissed.has(i.id) &&
+          seriesKey(i.meeting) === sk
+        );
+        const mineItems = evItems.filter(i => i.owner === ME);
+        const otherItems = evItems.filter(i => i.owner !== ME);
+        const summary = allSummaries.find(s => s.seriesKey === sk);
+        const isExpanded = expanded.has('today::' + ev.id);
+        const hasMine = mineItems.length > 0;
+        const isEmpty = evItems.length === 0 && !summary;
+
+        // Format time
+        let timeStr = '';
+        if (ev.start) {
+          const t = new Date(ev.start);
+          timeStr = t.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', hour12:true }).replace(' ','').toLowerCase();
+        }
+
+        html += `<div class="today-meeting${hasMine?' has-mine':''}${isEmpty?' empty-meeting':''}">
+          <div class="today-meeting-hdr" data-today-meeting="${escAttr(ev.id||ev.subject)}">
+            <span class="today-time">${timeStr}</span>
+            <span class="today-meeting-name">${escHtml(ev.subject||'')}</span>
+            <div class="today-meeting-meta">
+              ${mineItems.length ? `<span class="badge b-me">${mineItems.length} mine</span>` : ''}
+              ${otherItems.length ? `<span class="badge b-other">${otherItems.length} others</span>` : ''}
+              ${!evItems.length && !summary ? `<span style="font-size:11px;color:var(--text3)">no notes</span>` : ''}
+              <span style="color:var(--text3);font-size:12px">${isExpanded?'▲':'▼'}</span>
+            </div>
+          </div>
+          <div class="today-meeting-body${isExpanded?' open':''}">`;
+
+        // Summary
+        if (summary) {
+          html += `<div class="today-summary-label">Last session · ${summary.meetingDate}</div>
+            <div class="today-summary">${escHtml(summary.summary)}</div>`;
+        } else {
+          html += `<div class="today-no-summary">No prior meeting notes found.</div>`;
+        }
+
+        // Action items
+        html += `<div class="today-items-label">Open action items (${evItems.length})</div>`;
+        if (evItems.length === 0) {
+          html += `<div class="today-empty-items">No open items for this meeting.</div>`;
+        } else {
+          html += `<div class="item-list">`;
+          if (mineItems.length) {
+            mineItems.forEach(i => { html += itemCard(i); });
+          }
+          if (otherItems.length) {
+            otherItems.forEach(i => { html += itemCard(i); });
+          }
+          html += `</div>`;
+        }
+
+        html += `</div></div>`;
+      });
+    }
+
+    html += `</div>`;
+  });
+
+  // No calendar events at all
+  if (calEvents.length === 0) {
+    html += `<div class="empty">No meetings found — calendar may not be connected or no events today.</div>`;
+  }
+
+  main.innerHTML = html;
+  bindItemEvents();
+
+  // Bind expand/collapse
+  document.querySelectorAll('.today-meeting-hdr[data-today-meeting]').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = 'today::' + el.dataset.todayMeeting;
+      if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+      save(); renderToday();
+    });
   });
 }
 
