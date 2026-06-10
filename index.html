@@ -1071,8 +1071,14 @@ function renderPeople() {
       </div>`;
     }).join('');
 
+  const allMuted = Object.keys(counts).filter(o => o !== ME).every(o => muted.has(o));
   document.getElementById('main-content').innerHTML = `
-    <div style="margin-bottom:12px;font-size:12px;color:var(--text3)">Mute someone to hide their items from all views. Your items always show.</div>
+    <div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:12px;color:var(--text3)">Mute someone to hide their items from all views. Your items always show.</span>
+      <button id="btn-mute-all" style="font-size:11px;padding:4px 12px;border-radius:6px;cursor:pointer;font-family:var(--font);transition:all 0.15s;background:${allMuted?'var(--red-bg)':'transparent'};color:${allMuted?'var(--red)':'var(--text3)'};border:1px solid ${allMuted?'var(--red-border)':'var(--border2)'};">
+        ${allMuted ? 'Unmute all' : 'Mute all'}
+      </button>
+    </div>
     <div class="people-grid">${html}</div>`;
 
   document.querySelectorAll('.btn-mute').forEach(btn => {
@@ -1081,6 +1087,19 @@ function renderPeople() {
       if (muted.has(o)) muted.delete(o); else muted.add(o);
       save(); buildMeetingNav(); updateNavCounts(); renderPeople();
     });
+  });
+
+  document.getElementById('btn-mute-all')?.addEventListener('click', () => {
+    const others = Object.keys(counts).filter(o => o !== ME);
+    const allMuted = others.every(o => muted.has(o));
+    if (allMuted) {
+      if (!confirm('Unmute everyone?')) return;
+      others.forEach(o => muted.delete(o));
+    } else {
+      if (!confirm(`Mute all ${others.length} people? Your items will still show.`)) return;
+      others.forEach(o => muted.add(o));
+    }
+    save(); buildMeetingNav(); updateNavCounts(); renderPeople();
   });
 }
 
