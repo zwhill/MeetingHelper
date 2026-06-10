@@ -65,22 +65,87 @@
     transition: all 0.15s;
   }
   .btn-sync:hover { border-color: var(--text3); color: var(--text); }
+  /* ── Multiselect ── */
+  .btn-multiselect {
+    font-size: 12px; padding: 5px 12px;
+    background: transparent; color: var(--text2);
+    border: 1px solid var(--border2); border-radius: 6px;
+    cursor: pointer; font-family: var(--font);
+    transition: all 0.15s;
+  }
+  .btn-multiselect:hover { border-color: var(--text3); color: var(--text); }
+  .btn-multiselect.active { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+  .item.selected { border-color: var(--red) !important; background: #1f1212; }
+  .item.selected .check { border-color: var(--red); background: var(--red-bg); }
+  .bulk-bar {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #1e1e1e; border: 1px solid var(--border2);
+    border-radius: 10px; padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    z-index: 200; animation: slideUp 0.15s ease;
+  }
+  @keyframes slideUp { from { opacity:0; transform: translateX(-50%) translateY(8px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
+  .bulk-count { font-size: 12px; color: var(--text2); font-family: var(--mono); padding-right: 6px; border-right: 1px solid var(--border2); }
+  .bulk-btn {
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+    border: 1px solid var(--border2); background: transparent; color: var(--text);
+  }
+  .bulk-btn:hover { border-color: var(--text2); }
+  .bulk-btn.danger { color: var(--red); border-color: var(--red-border); }
+  .bulk-btn.danger:hover { background: var(--red-bg); }
+  .bulk-btn.success { color: var(--green); border-color: var(--green-border); }
+  .bulk-btn.success:hover { background: var(--green-bg); }
+  .owner-picker {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: #1e1e1e; border: 1px solid var(--border2); border-radius: 8px;
+    padding: 8px; z-index: 201; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column; gap: 2px; min-width: 160px;
+  }
+  .owner-option {
+    padding: 7px 12px; border-radius: 5px; cursor: pointer;
+    font-size: 13px; color: var(--text); transition: background 0.1s;
+  }
+  .owner-option:hover { background: var(--surface2); }
+
   .btn-sync.syncing { color: var(--amber); border-color: var(--amber); }
 
   /* ── Layout ── */
-  .shell { display: flex; height: calc(100vh - 49px); }
+  .shell { display: flex; height: calc(100vh - 49px); position: relative; }
 
   /* ── Sidebar ── */
   .sidebar {
     width: 220px;
+    min-width: 160px;
+    max-width: 400px;
     flex-shrink: 0;
     border-right: 1px solid var(--border);
-    padding: 16px 0;
+    padding: 16px 0 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    position: relative;
   }
+  .sidebar-nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; }
+  .sidebar-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text3);
+    font-family: var(--mono);
+    flex-shrink: 0;
+    margin-top: auto;
+  }
+  /* ── Resize handle ── */
+  .resize-handle {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .resize-handle:hover, .resize-handle.dragging { background: var(--red); }
   .nav-section { padding: 0 12px 4px; font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 8px; }
   .nav-item {
     display: flex; align-items: center; justify-content: space-between;
@@ -169,7 +234,8 @@
   .b-likely { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); cursor: pointer; }
   .b-dismiss { background: #1c1c1c; color: #bbb; border: 1px solid #444; cursor: pointer; }
   .b-dismiss:hover { border-color: #666; color: #e8e8e8; }
-  .b-carryover { background: #1a1500; color: #c9930a; border: 1px solid #3a2e00; font-family: var(--mono); }
+  .b-age { background: var(--surface2); color: #999; border: 1px solid #3a3a3a; font-family: var(--mono); }
+  .b-age.stale { color: #c9930a; border-color: #3a2e00; background: #1a1500; }
 
   .auto-note { font-size: 11px; color: var(--text3); font-style: italic; }
 
@@ -238,36 +304,40 @@
     <div class="logo">Domestic Tuning <span>//</span> Action Items</div>
     <div class="sync-info" id="sync-info">loading...</div>
   </div>
-  <button class="btn-sync" id="btn-sync" onclick="manualSync()">Sync now</button>
+  <div style="display:flex;gap:8px;align-items:center"><button class="btn-multiselect" id="btn-multiselect" onclick="toggleMultiselect()">Select</button><button class="btn-sync" id="btn-sync" onclick="manualSync()">Sync now</button></div>
 </header>
 
 <div class="shell">
-  <nav class="sidebar">
-    <div class="nav-section">Views</div>
-    <div class="nav-item active" data-view="mine" onclick="switchView('mine',this)">
-      My items <span class="nav-count" id="nav-mine">—</span>
-    </div>
-    <div class="nav-item" data-view="all" onclick="switchView('all',this)">
-      All open <span class="nav-count" id="nav-all">—</span>
-    </div>
-    <div class="nav-item" data-view="likely" onclick="switchView('likely',this)">
-      Likely done <span class="nav-count" id="nav-likely">—</span>
-    </div>
-    <div class="nav-item" data-view="done" onclick="switchView('done',this)">
-      Done <span class="nav-count" id="nav-done">—</span>
-    </div>
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-nav">
+      <div class="nav-section">Views</div>
+      <div class="nav-item active" data-view="mine" onclick="switchView('mine',this)">
+        My items <span class="nav-count" id="nav-mine">—</span>
+      </div>
+      <div class="nav-item" data-view="all" onclick="switchView('all',this)">
+        All open <span class="nav-count" id="nav-all">—</span>
+      </div>
+      <div class="nav-item" data-view="likely" onclick="switchView('likely',this)">
+        Likely done <span class="nav-count" id="nav-likely">—</span>
+      </div>
+      <div class="nav-item" data-view="done" onclick="switchView('done',this)">
+        Done <span class="nav-count" id="nav-done">—</span>
+      </div>
 
-    <div class="nav-section" style="margin-top:16px">Meetings</div>
-    <div id="meeting-nav"></div>
+      <div class="nav-section" style="margin-top:16px">Meetings</div>
+      <div id="meeting-nav"></div>
 
-    <div class="nav-section" style="margin-top:16px">Tools</div>
-    <div class="nav-item" data-view="context" onclick="switchView('context',this)">
-      Meeting context <span class="nav-count"></span>
+      <div class="nav-section" style="margin-top:16px">Tools</div>
+      <div class="nav-item" data-view="context" onclick="switchView('context',this)">
+        Meeting context <span class="nav-count"></span>
+      </div>
+      <div class="nav-item" data-view="people" onclick="switchView('people',this)">
+        People <span class="nav-count"></span>
+      </div>
     </div>
-    <div class="nav-item" data-view="people" onclick="switchView('people',this)">
-      People <span class="nav-count"></span>
-    </div>
+    <div class="sidebar-footer">v1.4.0</div>
   </nav>
+  <div class="resize-handle" id="resize-handle"></div>
 
   <main class="main" id="main-content">
     <div class="loading"><span class="spinner"></span>Loading action items...</div>
@@ -290,6 +360,8 @@ let currentView = 'mine';
 let currentMeetingFilter = null;
 let searchVal = '';
 let filterOwner = 'all';
+let multiselect = false;
+const selected = new Set();
 
 const done = new Set(JSON.parse(localStorage.getItem(S.done)||'[]'));
 const muted = new Set(JSON.parse(localStorage.getItem(S.muted)||'[]'));
@@ -548,28 +620,39 @@ function itemCard(i) {
   const isDone = done.has(i.id);
   const isLikely = likely.has(i.id) && !isDone;
   const isMe = i.owner === ME;
+  const isSelected = selected.has(i.id);
   let cls = 'item';
   if (isMe && !isDone) cls += ' mine';
   if (isLikely) cls += ' likely';
   if (isDone) cls += ' done';
+  if (isSelected) cls += ' selected';
   let checkCls = 'check';
-  if (isDone) checkCls += ' done';
-  else if (isLikely) checkCls += ' likely';
+  if (multiselect) {
+    checkCls = isSelected ? 'check done' : 'check';
+  } else {
+    if (isDone) checkCls += ' done';
+    else if (isLikely) checkCls += ' likely';
+  }
   const dateLabel = i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : '';
-  const carryCount = seenInMeetings[i.id] || 0;
-  const carryBadge = (!isDone && carryCount > 0)
-    ? `<span class="badge b-carryover" title="Still open after ${carryCount} later session${carryCount!==1?'s':''} of this meeting">🔁 ${carryCount}×</span>`
-    : '';
-  return `<div class="${cls}">
-    <div class="${checkCls}" data-id="${i.id}" title="${isDone?'Reopen':'Mark done'}"></div>
+  // Age badge
+  let ageBadge = '';
+  if (i.meetingDate && !isDone) {
+    const days = Math.floor((Date.now() - new Date(i.meetingDate)) / 86400000);
+    if (days >= 1) {
+      const stale = days >= 14;
+      ageBadge = `<span class="badge b-age${stale?' stale':''}" title="Created ${days} days ago">${days}d</span>`;
+    }
+  }
+  return `<div class="${cls}" ${multiselect ? `data-selectable="${i.id}"` : ''}>
+    <div class="${checkCls}" data-id="${i.id}" title="${multiselect ? (isSelected?'Deselect':'Select') : (isDone?'Reopen':'Mark done')}"></div>
     <div class="item-body">
       <div class="item-text${isDone?' done':''}">${escHtml(i.text)}</div>
       <div class="item-meta">
         <span class="badge ${isMe?'b-me':'b-other'}">${escHtml(i.owner)}</span>
         <span class="badge b-meeting">${escHtml(i.meeting.split(/\s+/).slice(0,4).join(' '))}</span>
         <span class="badge b-date">${dateLabel}</span>
-        ${carryBadge}
-        ${isLikely ? `<span class="badge b-likely" data-confirm="${i.id}">✓ confirm done</span><span class="badge b-dismiss" data-dismiss="${i.id}">✕ keep open</span><span class="auto-note">${escHtml(i.autoResolveNote||'not re-raised')}</span>` : ''}
+        ${ageBadge}
+        ${isLikely && !multiselect ? `<span class="badge b-likely" data-confirm="${i.id}">✓ confirm done</span><span class="badge b-dismiss" data-dismiss="${i.id}">✕ keep open</span><span class="auto-note">${escHtml(i.autoResolveNote||'not re-raised')}</span>` : ''}
       </div>
     </div>
   </div>`;
@@ -579,8 +662,14 @@ function bindItemEvents() {
   document.querySelectorAll('.check[data-id]').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.id;
-      if (done.has(id)) done.delete(id); else { done.add(id); likely.delete(id); }
-      save(); updateNavCounts(); render();
+      if (multiselect) {
+        if (selected.has(id)) selected.delete(id); else selected.add(id);
+        renderBulkBar();
+        render();
+      } else {
+        if (done.has(id)) done.delete(id); else { done.add(id); likely.delete(id); }
+        save(); updateNavCounts(); render();
+      }
     });
   });
   document.querySelectorAll('[data-confirm]').forEach(el => {
@@ -694,6 +783,104 @@ function escHtml(s) {
 }
 function escAttr(s) {
   return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+
+// ── Sidebar resize ────────────────────────────────────────────────────────────
+(function() {
+  const handle = document.getElementById('resize-handle');
+  const sidebar = document.getElementById('sidebar');
+  let dragging = false, startX = 0, startW = 0;
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = Math.min(400, Math.max(160, startW + (e.clientX - startX)));
+    sidebar.style.width = w + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+  });
+})();
+
+
+// ── Multiselect ───────────────────────────────────────────────────────────────
+
+function toggleMultiselect() {
+  multiselect = !multiselect;
+  selected.clear();
+  const btn = document.getElementById('btn-multiselect');
+  btn.classList.toggle('active', multiselect);
+  btn.textContent = multiselect ? 'Cancel' : 'Select';
+  renderBulkBar();
+  render();
+}
+
+function renderBulkBar() {
+  document.getElementById('bulk-bar')?.remove();
+  document.getElementById('owner-picker')?.remove();
+  if (!multiselect || selected.size === 0) return;
+  const owners = [...new Set(allItems.map(i => i.owner))].sort();
+  const bar = document.createElement('div');
+  bar.className = 'bulk-bar'; bar.id = 'bulk-bar';
+  bar.innerHTML = `
+    <span class="bulk-count">${selected.size} selected</span>
+    <button class="bulk-btn success" onclick="bulkDone()">✓ Mark done</button>
+    <button class="bulk-btn" onclick="bulkDismiss()">✕ Dismiss</button>
+    <button class="bulk-btn" onclick="bulkOwner()">↩ Change owner</button>
+    <button class="bulk-btn danger" onclick="bulkDelete()">Delete</button>
+  `;
+  document.body.appendChild(bar);
+}
+
+function bulkDone() {
+  selected.forEach(id => { done.add(id); likely.delete(id); dismissed.delete(id); });
+  selected.clear(); save(); updateNavCounts(); renderBulkBar(); render();
+}
+
+function bulkDismiss() {
+  selected.forEach(id => { dismissed.add(id); likely.delete(id); });
+  selected.clear(); save(); updateNavCounts(); renderBulkBar(); render();
+}
+
+function bulkDelete() {
+  if (!confirm(`Delete ${selected.size} item${selected.size!==1?'s':''}? This cannot be undone.`)) return;
+  allItems = allItems.filter(i => !selected.has(i.id));
+  selected.forEach(id => { done.delete(id); dismissed.delete(id); likely.delete(id); });
+  selected.clear(); save(); updateNavCounts(); renderBulkBar(); render();
+}
+
+function bulkOwner() {
+  document.getElementById('owner-picker')?.remove();
+  const owners = [...new Set(allItems.map(i => i.owner))].sort();
+  const picker = document.createElement('div');
+  picker.className = 'owner-picker'; picker.id = 'owner-picker';
+  picker.innerHTML = owners.map(o =>
+    `<div class="owner-option" onclick="bulkAssign('${o.replace(/'/g,"\'")}')">${o}</div>`
+  ).join('');
+  document.body.appendChild(picker);
+  setTimeout(() => document.addEventListener('click', function h(e) {
+    if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', h); }
+  }), 0);
+}
+
+function bulkAssign(owner) {
+  selected.forEach(id => {
+    const item = allItems.find(i => i.id === id);
+    if (item) item.owner = owner;
+  });
+  document.getElementById('owner-picker')?.remove();
+  selected.clear(); save(); updateNavCounts(); renderBulkBar(); render();
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
