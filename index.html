@@ -335,7 +335,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.4.0</div>
+    <div class="sidebar-footer">v1.4.1 · 10/06/2025</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -362,6 +362,7 @@ let searchVal = '';
 let filterOwner = 'all';
 let multiselect = false;
 const selected = new Set();
+let sortOrder = 'newest';
 
 const done = new Set(JSON.parse(localStorage.getItem(S.done)||'[]'));
 const muted = new Set(JSON.parse(localStorage.getItem(S.muted)||'[]'));
@@ -537,6 +538,10 @@ function render() {
       </select>
       <input type="text" id="f-search" placeholder="Search..." value="${searchVal}"
         oninput="searchVal=this.value;render()" />
+      <select onchange="sortOrder=this.value;render()">
+        <option value="newest"${sortOrder==='newest'?' selected':''}>Newest first</option>
+        <option value="oldest"${sortOrder==='oldest'?' selected':''}>Oldest first</option>
+      </select>
     </div>`;
 
   let items = getFilteredItems();
@@ -612,6 +617,11 @@ function getFilteredItems() {
     if (currentView === 'mine' && i.owner !== ME) return false;
     if (currentView === 'meeting' && i.meeting !== currentMeetingFilter) return false;
     return true;
+  });
+  items.sort((a, b) => {
+    const da = a.meetingDate || '';
+    const db = b.meetingDate || '';
+    return sortOrder === 'oldest' ? da.localeCompare(db) : db.localeCompare(da);
   });
   return items;
 }
