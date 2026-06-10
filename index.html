@@ -606,12 +606,19 @@ function toggleMuteMeeting(sk) {
 }
 
 function updateNavCounts() {
-  const open = allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+  const open = allItems.filter(i =>
+    !done.has(i.id) && !dismissed.has(i.id) &&
+    !mutedMeetings.has(seriesKey(i.meeting)) &&
+    !(muted.has(i.owner) && i.owner !== ME)
+  );
   const todayMine = open.filter(i => i.owner === ME && isTodayOrSoon(i.meetingDate, 1)).length;
   document.getElementById('nav-today').textContent = todayMine || '—';
   document.getElementById('nav-mine').textContent = open.filter(i=>i.owner===ME).length;
   document.getElementById('nav-all').textContent = open.length;
-  document.getElementById('nav-likely').textContent = [...likely].filter(id => !done.has(id) && !dismissed.has(id)).length;
+  document.getElementById('nav-likely').textContent = [...likely].filter(id => {
+    const item = allItems.find(i => i.id === id);
+    return !done.has(id) && !dismissed.has(id) && item && !mutedMeetings.has(seriesKey(item.meeting));
+  }).length;
   document.getElementById('nav-done').textContent = done.size;
 }
 
@@ -688,7 +695,11 @@ function render() {
   }
 
   // Stats for main views
-  const open = allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+  const open = allItems.filter(i =>
+    !done.has(i.id) && !dismissed.has(i.id) &&
+    !mutedMeetings.has(seriesKey(i.meeting)) &&
+    !(muted.has(i.owner) && i.owner !== ME)
+  );
   const mine = open.filter(i => i.owner === ME);
   const statsHtml = `
     <div class="stats">
