@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Action Items — Domestic Tuning</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #222;
+    --border: #2a2a2a;
+    --border2: #333;
+    --text: #e8e8e8;
+    --text2: #888;
+    --text3: #555;
+    --red: #E24B4A;
+    --red-bg: #1f1010;
+    --red-border: #3a1515;
+    --green: #1D9E75;
+    --green-bg: #0a1f18;
+    --green-border: #0f3028;
+    --amber: #d4820a;
+    --amber-bg: #1a1400;
+    --blue: #4a9eff;
+    --blue-bg: #0a1525;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.02em; }
+  .logo span { color: var(--red); }
+  .sync-info { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .sync-info.error { color: var(--red); }
+  .sync-info.ok { color: var(--green); }
+  .btn-sync {
+    font-size: 12px; padding: 5px 12px;
+    background: transparent; color: var(--text2);
+    border: 1px solid var(--border2); border-radius: 6px;
+    cursor: pointer; font-family: var(--font);
+    transition: all 0.15s;
+  }
+  .btn-sync:hover { border-color: var(--text3); color: var(--text); }
+  .btn-sync.syncing { color: var(--amber); border-color: var(--amber); }
+
+  /* ── Layout ── */
+  .shell { display: flex; height: calc(100vh - 49px); }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .nav-section { padding: 0 12px 4px; font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 8px; }
+  .nav-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 16px; cursor: pointer; border-radius: 0;
+    font-size: 13px; color: var(--text2);
+    transition: all 0.1s; border-left: 2px solid transparent;
+  }
+  .nav-item:hover { background: var(--surface); color: var(--text); }
+  .nav-item.active { background: var(--surface); color: var(--text); border-left-color: var(--red); }
+  .nav-count { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .nav-item.active .nav-count { color: var(--red); }
+
+  /* ── Main ── */
+  .main { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+  /* ── Stats ── */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .stat-value { font-size: 24px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+  .stat-value.red { color: var(--red); }
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+
+  /* ── Toolbar ── */
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .toolbar select, .toolbar input {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border2); border-radius: 6px;
+    padding: 6px 10px; font-size: 12px; font-family: var(--font);
+    outline: none; cursor: pointer;
+  }
+  .toolbar select:focus, .toolbar input:focus { border-color: var(--text3); }
+  .toolbar input { width: 180px; }
+  .toolbar input::placeholder { color: var(--text3); }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text3); margin: 16px 0 8px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Item cards ── */
+  .item-list { display: flex; flex-direction: column; gap: 6px; }
+  .item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; align-items: flex-start; gap: 10px;
+    transition: border-color 0.1s;
+  }
+  .item:hover { border-color: var(--border2); }
+  .item.mine { border-left: 3px solid var(--red); }
+  .item.likely { border-left: 3px solid var(--green); opacity: 0.8; }
+  .item.done { opacity: 0.4; }
+
+  .check {
+    width: 16px; height: 16px; border: 1.5px solid var(--border2);
+    border-radius: 3px; flex-shrink: 0; margin-top: 2px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .check:hover { border-color: var(--green); }
+  .check.done { background: var(--green); border-color: var(--green); }
+  .check.done::after {
+    content: ''; width: 8px; height: 5px;
+    border-left: 2px solid #fff; border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) translateY(-1px); display: block;
+  }
+  .check.likely { background: var(--green-bg); border-color: var(--green); }
+  .check.likely::after { content: '?'; font-size: 10px; color: var(--green); display: block; }
+
+  .item-body { flex: 1; min-width: 0; }
+  .item-text { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .item-text.done { text-decoration: line-through; color: var(--text3); }
+  .item-meta { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; align-items: center; }
+
+  .badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 99px;
+    font-family: var(--mono); letter-spacing: 0.02em;
+  }
+  .b-me { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  .b-other { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
+  .b-meeting { background: var(--blue-bg); color: var(--blue); border: 1px solid #0a2540; }
+  .b-date { background: var(--surface2); color: #aaa; border: 1px solid var(--border2); }
+  .b-likely { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); cursor: pointer; }
+  .b-dismiss { background: #1c1c1c; color: #bbb; border: 1px solid #444; cursor: pointer; }
+  .b-dismiss:hover { border-color: #666; color: #e8e8e8; }
+  .b-carryover { background: #1a1500; color: #c9930a; border: 1px solid #3a2e00; font-family: var(--mono); }
+
+  .auto-note { font-size: 11px; color: var(--text3); font-style: italic; }
+
+  /* ── Meeting view ── */
+  .meeting-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+  }
+  .meeting-hdr {
+    padding: 12px 16px; cursor: pointer; display: flex;
+    align-items: center; justify-content: space-between;
+    transition: background 0.1s;
+  }
+  .meeting-hdr:hover { background: var(--surface2); }
+  .meeting-title { font-size: 14px; font-weight: 500; color: var(--text); }
+  .meeting-sub { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+  .meeting-right { display: flex; align-items: center; gap: 10px; }
+  .meeting-body { border-top: 1px solid var(--border); padding: 14px 16px; display: none; }
+  .meeting-body.open { display: block; }
+  .m-section { margin-bottom: 12px; }
+  .m-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); margin-bottom: 6px; }
+  .m-summary { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .m-decision { font-size: 13px; color: var(--text); padding: 5px 10px; background: var(--surface2); border-radius: 5px; margin-bottom: 4px; }
+  .m-blocker { font-size: 13px; color: var(--amber); padding-left: 12px; position: relative; margin-bottom: 3px; line-height: 1.5; }
+  .m-blocker::before { content: '⚠'; position: absolute; left: 0; font-size: 10px; top: 2px; }
+
+  /* ── People view ── */
+  .people-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .person-row {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: opacity 0.2s;
+  }
+  .person-row.muted { opacity: 0.4; }
+  .person-info { display: flex; align-items: center; gap: 10px; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .person-name { font-size: 13px; color: var(--text); }
+  .person-count { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .btn-mute {
+    font-size: 11px; padding: 3px 10px; border-radius: 99px;
+    background: transparent; color: var(--text3);
+    border: 1px solid var(--border2); cursor: pointer; font-family: var(--font);
+    transition: all 0.15s;
+  }
+  .btn-mute:hover { border-color: var(--red); color: var(--red); }
+  .btn-mute.muted { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+
+  /* ── Empty / loading states ── */
+  .empty { text-align: center; padding: 40px; color: var(--text3); font-size: 13px; }
+  .loading { text-align: center; padding: 40px; color: var(--text3); font-size: 13px; font-family: var(--mono); }
+
+  /* ── Spinner ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border2); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <div class="logo">Domestic Tuning <span>//</span> Action Items</div>
+    <div class="sync-info" id="sync-info">loading...</div>
+  </div>
+  <button class="btn-sync" id="btn-sync" onclick="manualSync()">Sync now</button>
+</header>
+
+<div class="shell">
+  <nav class="sidebar">
+    <div class="nav-section">Views</div>
+    <div class="nav-item active" data-view="mine" onclick="switchView('mine',this)">
+      My items <span class="nav-count" id="nav-mine">—</span>
+    </div>
+    <div class="nav-item" data-view="all" onclick="switchView('all',this)">
+      All open <span class="nav-count" id="nav-all">—</span>
+    </div>
+    <div class="nav-item" data-view="likely" onclick="switchView('likely',this)">
+      Likely done <span class="nav-count" id="nav-likely">—</span>
+    </div>
+    <div class="nav-item" data-view="done" onclick="switchView('done',this)">
+      Done <span class="nav-count" id="nav-done">—</span>
+    </div>
+
+    <div class="nav-section" style="margin-top:16px">Meetings</div>
+    <div id="meeting-nav"></div>
+
+    <div class="nav-section" style="margin-top:16px">Tools</div>
+    <div class="nav-item" data-view="context" onclick="switchView('context',this)">
+      Meeting context <span class="nav-count"></span>
+    </div>
+    <div class="nav-item" data-view="people" onclick="switchView('people',this)">
+      People <span class="nav-count"></span>
+    </div>
+  </nav>
+
+  <main class="main" id="main-content">
+    <div class="loading"><span class="spinner"></span>Loading action items...</div>
+  </main>
+</div>
+
+<script>
+const WORKER = 'https://action-items.zwhill.workers.dev';
+const ME = 'Zach';
+const S = {
+  done: 'ai_done_v3',
+  muted: 'ai_muted_v3',
+  likely: 'ai_likely_v3',
+  dismissed: 'ai_dismissed_v3',
+  expanded: 'ai_expanded_v3',
+};
+
+let allItems = [];
+let currentView = 'mine';
+let currentMeetingFilter = null;
+let searchVal = '';
+let filterOwner = 'all';
+
+const done = new Set(JSON.parse(localStorage.getItem(S.done)||'[]'));
+const muted = new Set(JSON.parse(localStorage.getItem(S.muted)||'[]'));
+const likely = new Set(JSON.parse(localStorage.getItem(S.likely)||'[]'));
+const dismissed = new Set(JSON.parse(localStorage.getItem(S.dismissed)||'[]'));
+const expanded = new Set(JSON.parse(localStorage.getItem(S.expanded)||'[]'));
+
+function save() {
+  try {
+    localStorage.setItem(S.done, JSON.stringify([...done]));
+    localStorage.setItem(S.muted, JSON.stringify([...muted]));
+    localStorage.setItem(S.likely, JSON.stringify([...likely]));
+    localStorage.setItem(S.dismissed, JSON.stringify([...dismissed]));
+    localStorage.setItem(S.expanded, JSON.stringify([...expanded]));
+  } catch(e) {}
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────────
+
+async function loadItems() {
+  try {
+    const [itemsRes, statusRes] = await Promise.all([
+      fetch(`${WORKER}/items`),
+      fetch(`${WORKER}/status`)
+    ]);
+    allItems = await itemsRes.json();
+    const status = await statusRes.json();
+
+    // Run auto-resolve detection on loaded items
+    detectAutoResolves();
+
+    updateSyncInfo(status);
+    buildMeetingNav();
+    updateNavCounts();
+    render();
+  } catch(e) {
+    document.getElementById('sync-info').textContent = 'connection error';
+    document.getElementById('sync-info').className = 'sync-info error';
+    document.getElementById('main-content').innerHTML = '<div class="empty">Could not reach action-items.zwhill.workers.dev</div>';
+  }
+}
+
+// seenInMeetings: id -> number of distinct series sessions this item has survived open
+const seenInMeetings = {};
+
+function detectAutoResolves() {
+  // Group items by meeting series + owner
+  const bySeriesAndOwner = {};
+  allItems.forEach(item => {
+    const sk = seriesKey(item.meeting);
+    const key = `${sk}::${item.owner}`;
+    if (!bySeriesAndOwner[key]) bySeriesAndOwner[key] = [];
+    bySeriesAndOwner[key].push(item);
+  });
+
+  // Collect all distinct session dates per series (across all owners)
+  const allSeriesDates = {};
+  Object.entries(bySeriesAndOwner).forEach(([key, group]) => {
+    const sk = key.split('::')[0];
+    if (!allSeriesDates[sk]) allSeriesDates[sk] = new Set();
+    group.forEach(i => allSeriesDates[sk].add(i.meetingDate));
+  });
+
+  Object.entries(bySeriesAndOwner).forEach(([key, group]) => {
+    const sk = key.split('::')[0];
+    group.sort((a,b) => a.meetingDate.localeCompare(b.meetingDate));
+
+    for (let i = 0; i < group.length; i++) {
+      const older = group[i];
+      if (done.has(older.id) || dismissed.has(older.id)) continue;
+
+      // Carry-over count: how many series sessions happened AFTER this item's origin date
+      const laterSessions = [...(allSeriesDates[sk]||[])].filter(d => d > older.meetingDate);
+      seenInMeetings[older.id] = laterSessions.length; // 0 = first/only session, N = carried N times
+
+      if (i < group.length - 1) {
+        const newerItems = group.slice(i+1);
+        const reRaised = newerItems.some(newer => {
+          const ow = new Set(older.text.toLowerCase().split(/\s+/));
+          const nw = new Set(newer.text.toLowerCase().split(/\s+/));
+          const inter = [...ow].filter(w => nw.has(w)).length;
+          return inter / Math.max(new Set([...ow,...nw]).size, 1) > 0.35;
+        });
+        if (!reRaised && !likely.has(older.id)) {
+          likely.add(older.id);
+        }
+      }
+    }
+  });
+  save();
+}
+
+function seriesKey(name) {
+  return name.split(/\s+/).slice(0,3).join(' ').toLowerCase();
+}
+
+function updateSyncInfo(status) {
+  const el = document.getElementById('sync-info');
+  if (!status.lastSync) { el.textContent = 'never synced'; return; }
+  const d = new Date(status.lastSync);
+  const ago = Math.round((Date.now() - d) / 60000);
+  const label = ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago/60)}h ago` : `${Math.round(ago/1440)}d ago`;
+  el.textContent = `synced ${label} · ${status.totalItems} items`;
+  el.className = 'sync-info ok';
+}
+
+async function manualSync() {
+  const btn = document.getElementById('btn-sync');
+  btn.textContent = 'Syncing...';
+  btn.className = 'btn-sync syncing';
+  await loadItems();
+  btn.textContent = 'Sync now';
+  btn.className = 'btn-sync';
+}
+
+// ── Nav ───────────────────────────────────────────────────────────────────────
+
+function buildMeetingNav() {
+  const counts = {};
+  allItems.forEach(i => {
+    if (!done.has(i.id) && !dismissed.has(i.id)) {
+      counts[i.meeting] = (counts[i.meeting]||0) + 1;
+    }
+  });
+  const meetings = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,8);
+  const nav = document.getElementById('meeting-nav');
+  nav.innerHTML = meetings.map(([name, count]) => `
+    <div class="nav-item" data-view="meeting-${name}" onclick="switchMeeting('${name.replace(/'/g,"\\'")}',this)">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">${name}</span>
+      <span class="nav-count">${count}</span>
+    </div>`).join('');
+}
+
+function updateNavCounts() {
+  const open = allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+  document.getElementById('nav-mine').textContent = open.filter(i=>i.owner===ME).length;
+  document.getElementById('nav-all').textContent = open.length;
+  document.getElementById('nav-likely').textContent = [...likely].filter(id => !done.has(id) && !dismissed.has(id)).length;
+  document.getElementById('nav-done').textContent = done.size;
+}
+
+function switchView(view, el) {
+  currentView = view;
+  currentMeetingFilter = null;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+
+function switchMeeting(meeting, el) {
+  currentView = 'meeting';
+  currentMeetingFilter = meeting;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function render() {
+  const main = document.getElementById('main-content');
+
+  if (currentView === 'context') { renderContext(); return; }
+  if (currentView === 'people') { renderPeople(); return; }
+
+  // Build toolbar
+  const owners = [...new Set(allItems.map(i=>i.owner))].sort();
+  const toolbarHtml = `
+    <div class="toolbar">
+      <select id="f-owner" onchange="filterOwner=this.value;render()">
+        <option value="all">All owners</option>
+        ${owners.map(o=>`<option value="${o}"${filterOwner===o?' selected':''}>${o}</option>`).join('')}
+      </select>
+      <input type="text" id="f-search" placeholder="Search..." value="${searchVal}"
+        oninput="searchVal=this.value;render()" />
+    </div>`;
+
+  let items = getFilteredItems();
+
+  if (currentView === 'done') {
+    const doneItems = allItems.filter(i => done.has(i.id));
+    main.innerHTML = toolbarHtml + (doneItems.length
+      ? `<div class="item-list">${doneItems.map(itemCard).join('')}</div>`
+      : '<div class="empty">Nothing marked done yet.</div>');
+    bindItemEvents();
+    return;
+  }
+
+  if (currentView === 'likely') {
+    const likelyItems = allItems.filter(i => likely.has(i.id) && !done.has(i.id) && !dismissed.has(i.id));
+    main.innerHTML = `
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Likely done</div><div class="stat-value amber">${likelyItems.length}</div></div>
+      </div>
+      ${toolbarHtml}
+      ${likelyItems.length ? `<div class="item-list">${likelyItems.map(itemCard).join('')}</div>` : '<div class="empty">No items flagged as likely done.</div>'}`;
+    bindItemEvents();
+    return;
+  }
+
+  // Stats for main views
+  const open = allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+  const mine = open.filter(i => i.owner === ME);
+  const statsHtml = `
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Open</div><div class="stat-value">${open.length}</div></div>
+      <div class="stat"><div class="stat-label">Yours</div><div class="stat-value red">${mine.length}</div></div>
+      <div class="stat"><div class="stat-label">Likely done</div><div class="stat-value amber">${[...likely].filter(id=>!done.has(id)&&!dismissed.has(id)).length}</div></div>
+      <div class="stat"><div class="stat-label">Confirmed done</div><div class="stat-value green">${done.size}</div></div>
+    </div>`;
+
+  if (!items.length) {
+    main.innerHTML = statsHtml + toolbarHtml + '<div class="empty">No items match your filters.</div>';
+    return;
+  }
+
+  // Group: yours first, then by owner
+  let html = statsHtml + toolbarHtml;
+
+  if (currentView === 'mine') {
+    html += `<div class="section-label">Your open items</div><div class="item-list">${items.map(itemCard).join('')}</div>`;
+  } else {
+    const grouped = {};
+    items.forEach(i => {
+      if (!grouped[i.owner]) grouped[i.owner] = [];
+      grouped[i.owner].push(i);
+    });
+    // Mine first
+    if (grouped[ME]) {
+      html += `<div class="section-label">Yours</div><div class="item-list">${grouped[ME].map(itemCard).join('')}</div>`;
+      delete grouped[ME];
+    }
+    Object.entries(grouped).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([owner, ownerItems]) => {
+      html += `<div class="section-label">${owner}</div><div class="item-list">${ownerItems.map(itemCard).join('')}</div>`;
+    });
+  }
+
+  main.innerHTML = html;
+  bindItemEvents();
+}
+
+function getFilteredItems() {
+  let items = allItems.filter(i => {
+    if (done.has(i.id) || dismissed.has(i.id)) return false;
+    if (muted.has(i.owner) && i.owner !== ME) return false;
+    if (filterOwner !== 'all' && i.owner !== filterOwner) return false;
+    if (searchVal && !i.text.toLowerCase().includes(searchVal.toLowerCase()) && !i.owner.toLowerCase().includes(searchVal.toLowerCase())) return false;
+    if (currentView === 'mine' && i.owner !== ME) return false;
+    if (currentView === 'meeting' && i.meeting !== currentMeetingFilter) return false;
+    return true;
+  });
+  return items;
+}
+
+function itemCard(i) {
+  const isDone = done.has(i.id);
+  const isLikely = likely.has(i.id) && !isDone;
+  const isMe = i.owner === ME;
+  let cls = 'item';
+  if (isMe && !isDone) cls += ' mine';
+  if (isLikely) cls += ' likely';
+  if (isDone) cls += ' done';
+  let checkCls = 'check';
+  if (isDone) checkCls += ' done';
+  else if (isLikely) checkCls += ' likely';
+  const dateLabel = i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : '';
+  const carryCount = seenInMeetings[i.id] || 0;
+  const carryBadge = (!isDone && carryCount > 0)
+    ? `<span class="badge b-carryover" title="Still open after ${carryCount} later session${carryCount!==1?'s':''} of this meeting">🔁 ${carryCount}×</span>`
+    : '';
+  return `<div class="${cls}">
+    <div class="${checkCls}" data-id="${i.id}" title="${isDone?'Reopen':'Mark done'}"></div>
+    <div class="item-body">
+      <div class="item-text${isDone?' done':''}">${escHtml(i.text)}</div>
+      <div class="item-meta">
+        <span class="badge ${isMe?'b-me':'b-other'}">${escHtml(i.owner)}</span>
+        <span class="badge b-meeting">${escHtml(i.meeting.split(/\s+/).slice(0,4).join(' '))}</span>
+        <span class="badge b-date">${dateLabel}</span>
+        ${carryBadge}
+        ${isLikely ? `<span class="badge b-likely" data-confirm="${i.id}">✓ confirm done</span><span class="badge b-dismiss" data-dismiss="${i.id}">✕ keep open</span><span class="auto-note">${escHtml(i.autoResolveNote||'not re-raised')}</span>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindItemEvents() {
+  document.querySelectorAll('.check[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      if (done.has(id)) done.delete(id); else { done.add(id); likely.delete(id); }
+      save(); updateNavCounts(); render();
+    });
+  });
+  document.querySelectorAll('[data-confirm]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); done.add(el.dataset.confirm); likely.delete(el.dataset.confirm); save(); updateNavCounts(); render(); });
+  });
+  document.querySelectorAll('[data-dismiss]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); dismissed.add(el.dataset.dismiss); likely.delete(el.dataset.dismiss); save(); updateNavCounts(); render(); });
+  });
+}
+
+// ── Meeting context view ──────────────────────────────────────────────────────
+
+function renderContext() {
+  const meetingGroups = {};
+  allItems.forEach(i => {
+    if (!meetingGroups[i.meeting]) meetingGroups[i.meeting] = { items: [], dates: [] };
+    meetingGroups[i.meeting].items.push(i);
+    if (!meetingGroups[i.meeting].dates.includes(i.meetingDate)) {
+      meetingGroups[i.meeting].dates.push(i.meetingDate);
+    }
+  });
+
+  const html = Object.entries(meetingGroups)
+    .sort((a,b) => Math.max(...b[1].dates.map(d=>+new Date(d))) - Math.max(...a[1].dates.map(d=>+new Date(d))))
+    .map(([meeting, data]) => {
+      const open = data.items.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+      const isOpen = expanded.has(meeting);
+      const lastDate = data.dates.sort().reverse()[0];
+      return `<div class="meeting-card">
+        <div class="meeting-hdr" data-meeting="${escAttr(meeting)}">
+          <div>
+            <div class="meeting-title">${escHtml(meeting)}</div>
+            <div class="meeting-sub">${data.dates.length} session${data.dates.length!==1?'s':''} · last ${lastDate}</div>
+          </div>
+          <div class="meeting-right">
+            <span class="badge b-meeting">${open.length} open</span>
+            <span style="color:var(--text3);font-size:12px">${isOpen?'▲':'▼'}</span>
+          </div>
+        </div>
+        <div class="meeting-body${isOpen?' open':''}">
+          ${data.dates.sort().reverse().slice(0,3).map(date => {
+            const sessionItems = data.items.filter(i => i.meetingDate === date);
+            const openSession = sessionItems.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+            return `<div class="m-section">
+              <div class="m-section-title">${date}</div>
+              ${openSession.length ? openSession.map(i => `<div class="m-decision">${escHtml(i.owner)}: ${escHtml(i.text)}</div>`).join('') : '<div style="font-size:12px;color:var(--text3)">All items resolved</div>'}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('');
+
+  document.getElementById('main-content').innerHTML = html || '<div class="empty">No meeting data loaded.</div>';
+
+  document.querySelectorAll('.meeting-hdr[data-meeting]').forEach(el => {
+    el.addEventListener('click', () => {
+      const m = el.dataset.meeting;
+      if (expanded.has(m)) expanded.delete(m); else expanded.add(m);
+      save(); renderContext();
+    });
+  });
+}
+
+// ── People view ───────────────────────────────────────────────────────────────
+
+function renderPeople() {
+  const counts = {};
+  allItems.forEach(i => { counts[i.owner] = (counts[i.owner]||0)+1; });
+  const avatarColors = ['#1a2540','#0a1f18','#1f1010','#1a1400','#1a0f2a','#0a1a25'];
+  const textColors = ['#4a9eff','#1D9E75','#E24B4A','#d4820a','#9b6dff','#4adfff'];
+
+  const html = Object.entries(counts)
+    .sort((a,b) => b[1]-a[1])
+    .map(([owner, count], idx) => {
+      const isMuted = muted.has(owner);
+      const isMe = owner === ME;
+      const initials = owner.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+      const ci = idx % avatarColors.length;
+      const openCount = allItems.filter(i => i.owner===owner && !done.has(i.id) && !dismissed.has(i.id)).length;
+      return `<div class="person-row${isMuted?' muted':''}">
+        <div class="person-info">
+          <div class="avatar" style="background:${avatarColors[ci]};color:${textColors[ci]}">${initials}</div>
+          <div>
+            <div class="person-name">${escHtml(owner)}${isMe?' <span style="color:var(--text3);font-size:11px">(you)</span>':''}</div>
+            <div class="person-count">${openCount} open · ${count} total</div>
+          </div>
+        </div>
+        ${isMe
+          ? '<span style="font-size:11px;color:var(--text3)">always shown</span>'
+          : `<button class="btn-mute${isMuted?' muted':''}" data-owner="${escAttr(owner)}">${isMuted?'Unmute':'Mute'}</button>`}
+      </div>`;
+    }).join('');
+
+  document.getElementById('main-content').innerHTML = `
+    <div style="margin-bottom:12px;font-size:12px;color:var(--text3)">Mute someone to hide their items from all views. Your items always show.</div>
+    <div class="people-grid">${html}</div>`;
+
+  document.querySelectorAll('.btn-mute').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const o = btn.dataset.owner;
+      if (muted.has(o)) muted.delete(o); else muted.add(o);
+      save(); buildMeetingNav(); updateNavCounts(); renderPeople();
+    });
+  });
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadItems();
+</script>
+</body>
+</html>
