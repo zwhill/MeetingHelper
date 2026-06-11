@@ -393,6 +393,81 @@
   .kanban-col.never-col { opacity: 0.6; }
   .kanban-col.never-col.expanded { opacity: 1; }
 
+  /* ── Card modal ── */
+  .kmodal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 500;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.12s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .kmodal {
+    background: #141414;
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    width: 620px;
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+    animation: slideUp2 0.14s ease;
+  }
+  @keyframes slideUp2 { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  .kmodal-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: #141414; z-index: 1;
+  }
+  .kmodal-hdr-left { display: flex; gap: 8px; align-items: center; }
+  .kmodal-lane-select {
+    background: transparent; border: 1px solid var(--border2);
+    border-radius: 5px; color: var(--text2); font-size: 11px;
+    padding: 3px 8px; cursor: pointer; font-family: var(--font);
+  }
+  .kmodal-lane-select:focus { outline: none; border-color: var(--red); }
+  .kmodal-meta { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .kmodal-close {
+    background: transparent; border: none; color: var(--text3);
+    font-size: 20px; cursor: pointer; line-height: 1; padding: 0 2px;
+    transition: color 0.1s;
+  }
+  .kmodal-close:hover { color: var(--text); }
+  .kmodal-section { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .kmodal-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text3); margin-bottom: 7px;
+  }
+  .kmodal-textarea {
+    width: 100%; background: var(--bg);
+    border: 1px solid var(--border2); border-radius: 6px;
+    color: var(--text); font-size: 13px; line-height: 1.6;
+    padding: 9px 11px; resize: vertical; font-family: var(--font);
+    min-height: 72px; transition: border-color 0.1s;
+  }
+  .kmodal-textarea:focus { outline: none; border-color: var(--text3); }
+  .kmodal-brief {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 11px 13px;
+    font-size: 12px; color: var(--text2); line-height: 1.7;
+  }
+  .kmodal-brief.empty { color: var(--text3); font-style: italic; }
+  .kmodal-footer {
+    padding: 12px 18px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .kmodal-footer-left { display: flex; gap: 8px; }
+  .kmodal-footer-right { display: flex; gap: 8px; }
+  .kmodal-btn {
+    background: transparent; border: 1px solid var(--border2);
+    border-radius: 5px; color: var(--text2); font-size: 12px;
+    padding: 6px 13px; cursor: pointer; font-family: var(--font);
+    transition: all 0.1s;
+  }
+  .kmodal-btn:hover { border-color: var(--text3); color: var(--text); }
+  .kmodal-btn.danger:hover  { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+  .kmodal-btn.success:hover { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+
   .kanban-card-actions {
     margin-left: auto;
     display: flex;
@@ -547,7 +622,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.6.4 · 11/06/2026</div>
+    <div class="sidebar-footer">v1.7.0 · 11/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -568,6 +643,7 @@ const S = {
   dismissed: 'ai_dismissed_v3',
   expanded: 'ai_expanded_v3',
   lanes: 'ai_lanes_v1',
+  laneOrder: 'ai_lane_order_v1',
   neverExpanded: 'ai_never_expanded_v1',
 };
 
@@ -592,6 +668,7 @@ const expanded = new Set(JSON.parse(localStorage.getItem(S.expanded)||'[]'));
 
 // Lanes: id -> 'new'|'now'|'later'|'never'  (localStorage is fallback cache; worker KV is source of truth)
 let itemLanes = JSON.parse(localStorage.getItem(S.lanes)||'{}');
+let laneOrder = JSON.parse(localStorage.getItem(S.laneOrder)||'{}'); // { laneKey: [id, id, ...] }
 let neverExpanded = localStorage.getItem(S.neverExpanded) === 'true';
 
 function save() {
@@ -604,6 +681,7 @@ function save() {
     localStorage.setItem(S.dismissed, JSON.stringify([...dismissed]));
     localStorage.setItem(S.expanded, JSON.stringify([...expanded]));
     localStorage.setItem(S.lanes, JSON.stringify(itemLanes));
+    localStorage.setItem(S.laneOrder, JSON.stringify(laneOrder));
     localStorage.setItem(S.neverExpanded, String(neverExpanded));
   } catch(e) {}
 }
@@ -779,7 +857,13 @@ function updateNavCounts() {
   );
   const todayMine = open.filter(i => i.owner === ME && isTodayOrSoon(i.meetingDate, 1)).length;
   document.getElementById('nav-today').textContent = todayMine || '—';
-  document.getElementById('nav-mine').textContent = open.filter(i=>i.owner===ME).length;
+  document.getElementById('nav-mine').textContent = allItems.filter(i=>
+    i.owner===ME &&
+    !done.has(i.id) &&
+    !dismissed.has(i.id) &&
+    !trash.has(i.id) &&
+    !mutedMeetings.has(seriesKey(i.meeting))
+  ).length;
   document.getElementById('nav-all').textContent = open.length;
   document.getElementById('nav-likely').textContent = [...likely].filter(id => {
     const item = allItems.find(i => i.id === id);
@@ -990,28 +1074,46 @@ function itemCard(i) {
 
 // ── Kanban ────────────────────────────────────────────────────────────────────
 
+function getLaneItems(myItems) {
+  const laneItems = { new: [], now: [], later: [], never: [] };
+  myItems.forEach(i => { const l = itemLanes[i.id] || 'new'; laneItems[l].push(i); });
+
+  // Apply saved order within each lane, unknown items appended at end
+  ['new','now','later','never'].forEach(lane => {
+    const order = laneOrder[lane] || [];
+    const orderMap = {};
+    order.forEach((id, idx) => { orderMap[id] = idx; });
+    laneItems[lane].sort((a, b) => {
+      const ai = orderMap[a.id] ?? 99999;
+      const bi = orderMap[b.id] ?? 99999;
+      if (ai !== bi) return ai - bi;
+      return (b.meetingDate||'').localeCompare(a.meetingDate||'');
+    });
+  });
+  return laneItems;
+}
+
+function saveLaneOrder() {
+  const lanes = ['new','now','later','never'];
+  lanes.forEach(lane => {
+    const cards = document.querySelectorAll(`.kanban-cards[data-drop="${lane}"] .kanban-card`);
+    laneOrder[lane] = [...cards].map(c => c.dataset.id);
+  });
+  save();
+}
+
 function renderKanban() {
   const main = document.getElementById('main-content');
   const myItems = allItems.filter(i =>
-    i.owner === ME &&
-    !done.has(i.id) &&
-    !dismissed.has(i.id) &&
-    !trash.has(i.id) &&
-    !mutedMeetings.has(seriesKey(i.meeting))
+    i.owner === ME && !done.has(i.id) && !dismissed.has(i.id) &&
+    !trash.has(i.id) && !mutedMeetings.has(seriesKey(i.meeting))
   );
 
   const lanes = ['new', 'now', 'later', 'never'];
   const laneLabels = { new: 'New', now: 'Now', later: 'Later', never: 'Never' };
-  const laneItems = { new: [], now: [], later: [], never: [] };
-  myItems.forEach(i => {
-    const l = itemLanes[i.id] || 'new';
-    laneItems[l].push(i);
-  });
-  // Sort each lane newest first
-  lanes.forEach(l => laneItems[l].sort((a,b) => (b.meetingDate||'').localeCompare(a.meetingDate||'')));
+  const laneItems = getLaneItems(myItems);
 
   function kanbanCard(i) {
-    const isMe = i.owner === ME;
     const lane = itemLanes[i.id] || 'new';
     const dateLabel = i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : '';
     let ageBadge = '';
@@ -1022,7 +1124,7 @@ function renderKanban() {
         ageBadge = `<span class="badge b-age${stale?' stale':''}">${days}d</span>`;
       }
     }
-    return `<div class="kanban-card${isMe?' mine':''}" draggable="true" data-id="${i.id}" data-lane="${lane}">
+    return `<div class="kanban-card mine" draggable="true" data-id="${i.id}" data-lane="${lane}">
       <div class="kanban-card-text">${escHtml(i.text)}</div>
       <div class="kanban-card-meta">
         <span class="badge b-meeting">${escHtml(i.meeting.split(/\s+/).slice(0,4).join(' '))}</span>
@@ -1053,44 +1155,177 @@ function renderKanban() {
   }).join('');
 
   main.innerHTML = `<div class="kanban-board">${colsHtml}</div>`;
-
   bindKanbanEvents();
-  bindItemEvents();
+}
+
+// ── Card modal ────────────────────────────────────────────────────────────────
+
+// In-memory notes store (persisted to localStorage)
+let cardNotes = JSON.parse(localStorage.getItem('ai_card_notes_v1') || '{}');
+function saveNotes() { try { localStorage.setItem('ai_card_notes_v1', JSON.stringify(cardNotes)); } catch(e) {} }
+
+function openCardModal(id) {
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+
+  const lane = itemLanes[id] || 'new';
+  const dateLabel = item.meetingDate ? item.meetingDate.slice(5).replace('-','/') : '';
+  const notes = cardNotes[id] || '';
+
+  // Find matching summary — match on seriesKey or meeting name + date
+  const sk = seriesKey(item.meeting);
+  const summary = allSummaries.find(s =>
+    s.meetingDate === item.meetingDate && (s.seriesKey === sk || s.meetingName === item.meeting)
+  ) || allSummaries.find(s => s.seriesKey === sk);
+
+  const briefHtml = summary
+    ? `<div class="kmodal-brief">${escHtml(summary.summary)}</div>`
+    : `<div class="kmodal-brief empty">No meeting brief available for this item.</div>`;
+
+  const laneOptions = ['new','now','later','never'].map(l =>
+    `<option value="${l}"${l===lane?' selected':''}>${l.charAt(0).toUpperCase()+l.slice(1)}</option>`
+  ).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'kmodal-overlay';
+  overlay.id = 'kmodal-overlay';
+  overlay.innerHTML = `
+    <div class="kmodal" id="kmodal">
+      <div class="kmodal-hdr">
+        <div class="kmodal-hdr-left">
+          <select class="kmodal-lane-select" id="kmodal-lane">${laneOptions}</select>
+          <span class="kmodal-meta">${escHtml(item.meeting)} · ${dateLabel}</span>
+        </div>
+        <button class="kmodal-close" id="kmodal-close">×</button>
+      </div>
+      <div class="kmodal-section">
+        <div class="kmodal-label">Action item</div>
+        <textarea class="kmodal-textarea" id="kmodal-text">${escHtml(item.text)}</textarea>
+      </div>
+      <div class="kmodal-section">
+        <div class="kmodal-label">Notes</div>
+        <textarea class="kmodal-textarea" id="kmodal-notes" placeholder="Add notes..." style="min-height:52px;">${escHtml(notes)}</textarea>
+      </div>
+      <div class="kmodal-section">
+        <div class="kmodal-label">Meeting brief</div>
+        ${briefHtml}
+      </div>
+      <div class="kmodal-footer">
+        <div class="kmodal-footer-left">
+          <button class="kmodal-btn" id="kmodal-up" title="Move up in lane">↑ Move up</button>
+          <button class="kmodal-btn" id="kmodal-down" title="Move down in lane">↓ Move down</button>
+        </div>
+        <div class="kmodal-footer-right">
+          <button class="kmodal-btn danger" id="kmodal-trash">🗑 Delete</button>
+          <button class="kmodal-btn success" id="kmodal-done">✓ Mark complete</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  // Close handlers
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeCardModal(id); });
+  document.getElementById('kmodal-close').addEventListener('click', () => closeCardModal(id));
+  document.addEventListener('keydown', kmodalEsc);
+
+  // Lane change
+  document.getElementById('kmodal-lane').addEventListener('change', e => {
+    setLane(id, e.target.value);
+  });
+
+  // Notes autosave
+  document.getElementById('kmodal-notes').addEventListener('input', e => {
+    cardNotes[id] = e.target.value;
+    saveNotes();
+  });
+
+  // Move up/down
+  document.getElementById('kmodal-up').addEventListener('click', () => moveCardInLane(id, -1));
+  document.getElementById('kmodal-down').addEventListener('click', () => moveCardInLane(id, 1));
+
+  // Complete
+  document.getElementById('kmodal-done').addEventListener('click', () => {
+    done.add(id);
+    fetch(`${WORKER}/item/${encodeURIComponent(id)}/status`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmedDone: true }),
+    }).catch(() => {});
+    save(); updateNavCounts();
+    closeCardModal(id, false);
+    renderKanban();
+  });
+
+  // Trash
+  document.getElementById('kmodal-trash').addEventListener('click', () => {
+    trash.add(id); save(); updateNavCounts();
+    closeCardModal(id, false);
+    renderKanban();
+  });
+}
+
+function closeCardModal(id, rerender = true) {
+  const overlay = document.getElementById('kmodal-overlay');
+  if (overlay) overlay.remove();
+  document.removeEventListener('keydown', kmodalEsc);
+  if (rerender) renderKanban();
+}
+
+function kmodalEsc(e) { if (e.key === 'Escape') { const o = document.getElementById('kmodal-overlay'); if (o) o.remove(); document.removeEventListener('keydown', kmodalEsc); renderKanban(); } }
+
+function moveCardInLane(id, dir) {
+  const lane = itemLanes[id] || 'new';
+  const order = laneOrder[lane] ? [...laneOrder[lane]] : [];
+  // Ensure all current lane items are represented
+  const cards = [...document.querySelectorAll(`.kanban-cards[data-drop="${lane}"] .kanban-card`)].map(c => c.dataset.id);
+  const base = cards.length ? cards : order;
+  const idx = base.indexOf(id);
+  if (idx === -1) return;
+  const newIdx = Math.max(0, Math.min(base.length - 1, idx + dir));
+  const arr = [...base];
+  arr.splice(idx, 1);
+  arr.splice(newIdx, 0, id);
+  laneOrder[lane] = arr;
+  save();
+  renderKanban();
 }
 
 function bindKanbanEvents() {
   let dragId = null;
+  let dragLane = null;
 
   document.querySelectorAll('.kc-btn').forEach(btn => {
     btn.addEventListener('click', e => {
-      e.stopPropagation(); // don't trigger drag
+      e.stopPropagation();
       const id = btn.dataset.kcDone || btn.dataset.kcTrash;
       if (btn.dataset.kcDone) {
         done.add(id);
-        // Persist to worker
         fetch(`${WORKER}/item/${encodeURIComponent(id)}/status`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirmedDone: true }),
         }).catch(() => {});
       } else {
         trash.add(id);
       }
-      save();
-      updateNavCounts();
-      renderKanban();
+      save(); updateNavCounts(); renderKanban();
     });
   });
 
   document.querySelectorAll('.kanban-card[draggable]').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.kc-btn')) return;
+      openCardModal(card.dataset.id);
+    });
     card.addEventListener('dragstart', e => {
       dragId = card.dataset.id;
+      dragLane = card.dataset.lane;
       card.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
     card.addEventListener('dragend', () => {
       card.classList.remove('dragging');
       document.querySelectorAll('.kanban-drop-zone').forEach(z => z.classList.remove('drag-over'));
+      saveLaneOrder();
     });
   });
 
@@ -1111,7 +1346,7 @@ function bindKanbanEvents() {
       if (dragId && targetLane) {
         setLane(dragId, targetLane);
       }
-      dragId = null;
+      dragId = null; dragLane = null;
     });
   });
 }
