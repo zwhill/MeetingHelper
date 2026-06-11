@@ -611,10 +611,10 @@
         Trash <span class="nav-count" id="nav-trash">—</span>
       </div>
 
-      <div class="nav-section" style="margin-top:16px">Meetings</div>
-      <div id="meeting-nav"></div>
-
       <div class="nav-section" style="margin-top:16px">Tools</div>
+      <div class="nav-item" data-view="meetings" onclick="switchView('meetings',this)">
+        Meetings <span class="nav-count" id="nav-meetings">—</span>
+      </div>
       <div class="nav-item" data-view="context" onclick="switchView('context',this)">
         Meeting context <span class="nav-count"></span>
       </div>
@@ -622,7 +622,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.7.3 · 11/06/2026</div>
+    <div class="sidebar-footer">v1.7.4 · 11/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -811,42 +811,17 @@ async function manualSync() {
 // ── Nav ───────────────────────────────────────────────────────────────────────
 
 function buildMeetingNav() {
-  const counts = {};
-  allItems.forEach(i => {
-    if (!done.has(i.id) && !dismissed.has(i.id)) {
-      counts[i.meeting] = (counts[i.meeting]||0) + 1;
-    }
-  });
-  // Include muted meetings so they can be unmuted
-  mutedMeetings.forEach(sk => {
-    const match = allItems.find(i => seriesKey(i.meeting) === sk);
-    if (match && counts[match.meeting] === undefined) counts[match.meeting] = 0;
-  });
-  const meetings = Object.entries(counts).sort((a,b) => a[0].localeCompare(b[0]));
-  const nav = document.getElementById('meeting-nav');
-  nav.innerHTML = meetings.map(([name, count]) => {
-    const sk = seriesKey(name);
-    const isMuted = mutedMeetings.has(sk);
-    const safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    const safeSk = sk.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return '<div class="nav-item' + (isMuted ? ' muted-meeting' : '') + '" style="display:flex;align-items:center;justify-content:space-between;' + (isMuted ? 'opacity:0.45' : '') + '" data-view="meeting-' + escAttr(name) + '">'
-      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;cursor:pointer"'
-      + ' onclick="switchMeeting(\'' + safeName + '\',this.closest(\'.nav-item\'))">' + escHtml(name) + '</span>'
-      + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'
-      + (isMuted ? '<span class="nav-count" style="color:var(--text3)">muted</span>' : '<span class="nav-count">' + count + '</span>')
-      + '<span style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 4px;border-radius:3px;transition:color 0.1s"'
-      + ' title="' + (isMuted ? 'Unmute' : 'Mute') + '"'
-      + ' onmouseenter="this.style.color=\'var(--red)\'" onmouseleave="this.style.color=\'var(--text3)\'"'
-      + ' onclick="event.stopPropagation();toggleMuteMeeting(\'' + safeSk + '\')">'
-      + (isMuted ? '🔇' : '🔕')
-      + '</span></div></div>';
-  }).join('');
+  // Sidebar meeting list removed — meetings are now a full view.
+  // Just keep counts fresh for updateNavCounts.
+  updateNavCounts();
 }
 
 function toggleMuteMeeting(sk) {
   if (mutedMeetings.has(sk)) mutedMeetings.delete(sk);
   else mutedMeetings.add(sk);
-  save(); buildMeetingNav(); updateNavCounts(); render();
+  save(); updateNavCounts();
+  if (currentView === 'meetings') renderMeetings();
+  else render();
 }
 
 function updateNavCounts() {
@@ -865,6 +840,11 @@ function updateNavCounts() {
     !mutedMeetings.has(seriesKey(i.meeting))
   ).length;
   document.getElementById('nav-all').textContent = open.length;
+  const meetingsEl = document.getElementById('nav-meetings');
+  if (meetingsEl) {
+    const uniqueMeetings = new Set(allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id)).map(i => seriesKey(i.meeting)));
+    meetingsEl.textContent = uniqueMeetings.size;
+  }
   document.getElementById('nav-likely').textContent = [...likely].filter(id => {
     const item = allItems.find(i => i.id === id);
     return !done.has(id) && !dismissed.has(id) && item && !mutedMeetings.has(seriesKey(item.meeting));
@@ -893,7 +873,7 @@ function switchMeeting(meeting, el) {
   currentView = 'meeting';
   currentMeetingFilter = meeting;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  el.classList.add('active');
+  if (el) el.classList.add('active');
   render();
 }
 
@@ -904,6 +884,7 @@ function render() {
 
   if (currentView === 'context') { renderContext(); return; }
   if (currentView === 'people') { renderPeople(); return; }
+  if (currentView === 'meetings') { renderMeetings(); return; }
   if (currentView === 'today') { renderToday(); return; }
   if (currentView === 'mine') { renderKanban(); return; }
 
@@ -1633,6 +1614,53 @@ function trashCard(i) {
       </div>
     </div>
   </div>`;
+}
+
+function renderMeetings() {
+  const main = document.getElementById('main-content');
+
+  // Build meeting map: name -> { count, openCount, isMuted, sk }
+  const meetingMap = {};
+  allItems.forEach(i => {
+    if (!meetingMap[i.meeting]) {
+      meetingMap[i.meeting] = { total: 0, open: 0, sk: seriesKey(i.meeting) };
+    }
+    meetingMap[i.meeting].total++;
+    if (!done.has(i.id) && !dismissed.has(i.id) && !trash.has(i.id)) {
+      meetingMap[i.meeting].open++;
+    }
+  });
+  // Include muted meetings with 0 count so they can be unmuted
+  mutedMeetings.forEach(sk => {
+    const match = allItems.find(i => seriesKey(i.meeting) === sk);
+    if (match && !meetingMap[match.meeting]) {
+      meetingMap[match.meeting] = { total: 0, open: 0, sk };
+    }
+  });
+
+  const meetings = Object.entries(meetingMap).sort((a,b) => a[0].localeCompare(b[0]));
+
+  const rows = meetings.map(([name, m]) => {
+    const isMuted = mutedMeetings.has(m.sk);
+    const safeSk = m.sk.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div class="person-row${isMuted?' muted':''}" style="${isMuted?'opacity:0.45':''}">
+      <div class="person-info" style="cursor:pointer;flex:1" onclick="switchMeeting('${safeName}', null)">
+        <div class="avatar" style="background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600">
+          ${m.open > 0 ? m.open : '—'}
+        </div>
+        <div>
+          <div class="person-name">${escHtml(name)}${isMuted?' <span style="color:var(--text3);font-size:11px">(muted)</span>':''}</div>
+          <div class="person-count">${m.open} open · ${m.total} total</div>
+        </div>
+      </div>
+      <button class="btn-mute${isMuted?' muted':''}" onclick="toggleMuteMeeting('${safeSk}')">${isMuted?'Unmute':'Mute'}</button>
+    </div>`;
+  }).join('');
+
+  main.innerHTML = `
+    <div class="section-label" style="margin-bottom:12px">${meetings.length} meetings</div>
+    <div class="people-list">${rows}</div>`;
 }
 
 function renderPeople() {
