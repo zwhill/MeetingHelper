@@ -622,7 +622,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.7.0 · 11/06/2026</div>
+    <div class="sidebar-footer">v1.7.1 · 11/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1319,13 +1319,14 @@ function bindKanbanEvents() {
     card.addEventListener('dragstart', e => {
       dragId = card.dataset.id;
       dragLane = card.dataset.lane;
-      card.classList.add('dragging');
+      setTimeout(() => card.classList.add('dragging'), 0);
       e.dataTransfer.effectAllowed = 'move';
     });
     card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
+      document.querySelectorAll('.kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
       document.querySelectorAll('.kanban-drop-zone').forEach(z => z.classList.remove('drag-over'));
-      saveLaneOrder();
+      document.querySelectorAll('.drag-placeholder').forEach(p => p.remove());
+      dragId = null; dragLane = null;
     });
   });
 
@@ -1335,20 +1336,59 @@ function bindKanbanEvents() {
       e.dataTransfer.dropEffect = 'move';
       document.querySelectorAll('.kanban-drop-zone').forEach(z => z.classList.remove('drag-over'));
       zone.classList.add('drag-over');
+
+      // Show insertion placeholder within same-lane zone
+      if (zone.dataset.drop === dragLane) {
+        document.querySelectorAll('.drag-placeholder').forEach(p => p.remove());
+        const afterEl = getDragAfterElement(zone, e.clientY);
+        const ph = document.createElement('div');
+        ph.className = 'drag-placeholder';
+        ph.style.cssText = 'height:4px;background:var(--red);border-radius:2px;margin:2px 0;';
+        if (afterEl) zone.insertBefore(ph, afterEl);
+        else zone.appendChild(ph);
+      }
     });
     zone.addEventListener('dragleave', e => {
-      if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+      if (!zone.contains(e.relatedTarget)) {
+        zone.classList.remove('drag-over');
+        document.querySelectorAll('.drag-placeholder').forEach(p => p.remove());
+      }
     });
     zone.addEventListener('drop', e => {
       e.preventDefault();
       zone.classList.remove('drag-over');
+      document.querySelectorAll('.drag-placeholder').forEach(p => p.remove());
       const targetLane = zone.dataset.drop;
-      if (dragId && targetLane) {
+      if (!dragId || !targetLane) return;
+
+      if (targetLane === dragLane) {
+        // Same lane — reorder by inserting at drop position then reading DOM order
+        const afterEl = getDragAfterElement(zone, e.clientY);
+        const draggingCard = zone.querySelector(`[data-id="${dragId}"]`);
+        if (draggingCard) {
+          if (afterEl) zone.insertBefore(draggingCard, afterEl);
+          else zone.appendChild(draggingCard);
+        }
+        // Capture new order from DOM
+        const newOrder = [...zone.querySelectorAll('.kanban-card')].map(c => c.dataset.id);
+        laneOrder[targetLane] = newOrder;
+        save();
+      } else {
+        // Cross-lane — change lane, new item goes to bottom
         setLane(dragId, targetLane);
       }
-      dragId = null; dragLane = null;
     });
   });
+}
+
+function getDragAfterElement(container, y) {
+  const draggables = [...container.querySelectorAll('.kanban-card:not(.dragging)')];
+  return draggables.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) return { offset, element: child };
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 function bindItemEvents() {
