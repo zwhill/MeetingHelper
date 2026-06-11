@@ -393,6 +393,32 @@
   .kanban-col.never-col { opacity: 0.6; }
   .kanban-col.never-col.expanded { opacity: 1; }
 
+  .kanban-card-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .kanban-card:hover .kanban-card-actions { opacity: 1; }
+  .kc-btn {
+    background: transparent;
+    border: 1px solid var(--border2);
+    border-radius: 5px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.1s, border-color 0.1s;
+    padding: 0;
+    line-height: 1;
+  }
+  .kc-done:hover  { background: var(--green-bg);  border-color: var(--green-border); }
+  .kc-trash:hover { background: var(--red-bg);    border-color: var(--red-border);   }
+
   /* Lane pill for non-kanban views */
   .b-lane-now   { background: var(--red-bg);  color: var(--red);  border: 1px solid var(--red-border); }
   .b-lane-later { background: var(--blue-bg); color: var(--blue); border: 1px solid #0a2540; }
@@ -519,7 +545,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.6.0 · 11/06/2026</div>
+    <div class="sidebar-footer">v1.6.1 · 11/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -999,6 +1025,10 @@ function renderKanban() {
         <span class="badge b-meeting">${escHtml(i.meeting.split(/\s+/).slice(0,4).join(' '))}</span>
         <span class="badge b-date">${dateLabel}</span>
         ${ageBadge}
+        <div class="kanban-card-actions">
+          <button class="kc-btn kc-done" data-kc-done="${i.id}" title="Mark complete">✓</button>
+          <button class="kc-btn kc-trash" data-kc-trash="${i.id}" title="Delete">🗑</button>
+        </div>
       </div>
     </div>`;
   }
@@ -1028,7 +1058,26 @@ function renderKanban() {
 function bindKanbanEvents() {
   let dragId = null;
 
-  document.querySelectorAll('.kanban-card[draggable]').forEach(card => {
+  document.querySelectorAll('.kc-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation(); // don't trigger drag
+      const id = btn.dataset.kcDone || btn.dataset.kcTrash;
+      if (btn.dataset.kcDone) {
+        done.add(id);
+        // Persist to worker
+        fetch(`${WORKER}/item/${encodeURIComponent(id)}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmedDone: true }),
+        }).catch(() => {});
+      } else {
+        trash.add(id);
+      }
+      save();
+      updateNavCounts();
+      renderKanban();
+    });
+  });
     card.addEventListener('dragstart', e => {
       dragId = card.dataset.id;
       card.classList.add('dragging');
