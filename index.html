@@ -307,6 +307,97 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border2); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
 
+  /* ── Kanban ── */
+  .kanban-board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding-bottom: 40px;
+  }
+  .kanban-col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+  }
+  .kanban-col-hdr {
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .kanban-col-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .kanban-col-title.lane-new   { color: var(--text2); }
+  .kanban-col-title.lane-now   { color: var(--red); }
+  .kanban-col-title.lane-later { color: var(--blue); }
+  .kanban-col-title.lane-never { color: var(--text3); }
+  .kanban-col-count {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+  .kanban-cards {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+  }
+  .kanban-drop-zone {
+    min-height: 60px;
+    border-radius: 6px;
+    transition: background 0.15s, border 0.15s;
+    border: 2px dashed transparent;
+  }
+  .kanban-drop-zone.drag-over {
+    background: var(--surface2);
+    border-color: var(--border2);
+  }
+  .kanban-card {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    padding: 9px 11px;
+    cursor: grab;
+    transition: border-color 0.1s, opacity 0.1s, box-shadow 0.1s;
+    user-select: none;
+  }
+  .kanban-card:hover { border-color: var(--border2); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .kanban-card.mine { border-left: 3px solid var(--red); }
+  .kanban-card.dragging { opacity: 0.4; cursor: grabbing; }
+  .kanban-card-text { font-size: 12px; color: var(--text); line-height: 1.5; margin-bottom: 6px; }
+  .kanban-card-meta { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .kanban-never-toggle {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--text3);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font);
+    transition: color 0.1s;
+  }
+  .kanban-never-toggle:hover { color: var(--text2); }
+  .kanban-col.never-col { opacity: 0.6; }
+  .kanban-col.never-col.expanded { opacity: 1; }
+
+  /* Lane pill for non-kanban views */
+  .b-lane-now   { background: var(--red-bg);  color: var(--red);  border: 1px solid var(--red-border); }
+  .b-lane-later { background: var(--blue-bg); color: var(--blue); border: 1px solid #0a2540; }
+  .b-lane-never { background: #111; color: var(--text3); border: 1px solid var(--border2); }
+
   /* ── Today view ── */
   .today-header {
     display: flex; align-items: baseline; justify-content: space-between;
@@ -428,7 +519,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.5.4 · 10/06/2026</div>
+    <div class="sidebar-footer">v1.6.0 · 11/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -448,6 +539,8 @@ const S = {
   likely: 'ai_likely_v3',
   dismissed: 'ai_dismissed_v3',
   expanded: 'ai_expanded_v3',
+  lanes: 'ai_lanes_v1',
+  neverExpanded: 'ai_never_expanded_v1',
 };
 
 let allItems = [];
@@ -469,6 +562,10 @@ const likely = new Set(JSON.parse(localStorage.getItem(S.likely)||'[]'));
 const dismissed = new Set(JSON.parse(localStorage.getItem(S.dismissed)||'[]'));
 const expanded = new Set(JSON.parse(localStorage.getItem(S.expanded)||'[]'));
 
+// Lanes: id -> 'new'|'now'|'later'|'never'  (localStorage is fallback cache; worker KV is source of truth)
+let itemLanes = JSON.parse(localStorage.getItem(S.lanes)||'{}');
+let neverExpanded = localStorage.getItem(S.neverExpanded) === 'true';
+
 function save() {
   try {
     localStorage.setItem(S.done, JSON.stringify([...done]));
@@ -478,21 +575,44 @@ function save() {
     localStorage.setItem(S.likely, JSON.stringify([...likely]));
     localStorage.setItem(S.dismissed, JSON.stringify([...dismissed]));
     localStorage.setItem(S.expanded, JSON.stringify([...expanded]));
+    localStorage.setItem(S.lanes, JSON.stringify(itemLanes));
+    localStorage.setItem(S.neverExpanded, String(neverExpanded));
   } catch(e) {}
+}
+
+async function setLane(id, lane) {
+  // Update local state immediately
+  if (lane === 'new') delete itemLanes[id];
+  else itemLanes[id] = lane;
+  save();
+  render();
+  // Persist to worker (fire and forget — localStorage is fallback if this fails)
+  try {
+    await fetch(`${WORKER}/lanes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, lane }),
+    });
+  } catch(e) { /* silent — localStorage already saved */ }
 }
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function loadItems() {
   try {
-    const [itemsRes, statusRes, summariesRes] = await Promise.all([
+    const [itemsRes, statusRes, summariesRes, lanesRes] = await Promise.all([
       fetch(`${WORKER}/items`),
       fetch(`${WORKER}/status`),
       fetch(`${WORKER}/summaries`),
+      fetch(`${WORKER}/lanes`),
     ]);
     allItems = await itemsRes.json();
     const status = await statusRes.json();
     allSummaries = await summariesRes.json();
+    if (lanesRes.ok) {
+      itemLanes = await lanesRes.json();
+      save(); // cache to localStorage
+    }
 
     // Run auto-resolve detection on loaded items
     detectAutoResolves();
@@ -672,6 +792,7 @@ function render() {
   if (currentView === 'context') { renderContext(); return; }
   if (currentView === 'people') { renderPeople(); return; }
   if (currentView === 'today') { renderToday(); return; }
+  if (currentView === 'mine') { renderKanban(); return; }
 
   // Build toolbar
   const owners = [...new Set(allItems.map(i=>i.owner))].filter(o => o === ME || !muted.has(o)).sort();
@@ -750,27 +871,21 @@ function render() {
   // Group: yours first, then by owner
   let html = statsHtml + toolbarHtml;
 
-  if (currentView === 'mine') {
-    const allSelectedMine = items.length > 0 && items.every(i => selected.has(i.id));
-    if (multiselect) html += `<div class="select-all-bar" onclick="selectAllVisible()"><div class="check${allSelectedMine?' done':''}" style="pointer-events:none"></div><span class="select-all-label">${allSelectedMine ? 'Deselect all' : 'Select all'} (${items.length})</span></div>`;
-    html += `<div class="section-label">Your open items</div><div class="item-list">${items.map(itemCard).join('')}</div>`;
-  } else {
-    const allSelectedAll = items.length > 0 && items.every(i => selected.has(i.id));
-    if (multiselect) html += `<div class="select-all-bar" onclick="selectAllVisible()"><div class="check${allSelectedAll?' done':''}" style="pointer-events:none"></div><span class="select-all-label">${allSelectedAll ? 'Deselect all' : 'Select all'} (${items.length})</span></div>`;
-    const grouped = {};
-    items.forEach(i => {
-      if (!grouped[i.owner]) grouped[i.owner] = [];
-      grouped[i.owner].push(i);
-    });
-    // Mine first
-    if (grouped[ME]) {
-      html += `<div class="section-label">Yours</div><div class="item-list">${grouped[ME].map(itemCard).join('')}</div>`;
-      delete grouped[ME];
-    }
-    Object.entries(grouped).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([owner, ownerItems]) => {
-      html += `<div class="section-label">${owner}</div><div class="item-list">${ownerItems.map(itemCard).join('')}</div>`;
-    });
+  const allSelectedAll = items.length > 0 && items.every(i => selected.has(i.id));
+  if (multiselect) html += `<div class="select-all-bar" onclick="selectAllVisible()"><div class="check${allSelectedAll?' done':''}" style="pointer-events:none"></div><span class="select-all-label">${allSelectedAll ? 'Deselect all' : 'Select all'} (${items.length})</span></div>`;
+  const grouped = {};
+  items.forEach(i => {
+    if (!grouped[i.owner]) grouped[i.owner] = [];
+    grouped[i.owner].push(i);
+  });
+  // Mine first
+  if (grouped[ME]) {
+    html += `<div class="section-label">Yours</div><div class="item-list">${grouped[ME].map(itemCard).join('')}</div>`;
+    delete grouped[ME];
   }
+  Object.entries(grouped).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([owner, ownerItems]) => {
+    html += `<div class="section-label">${owner}</div><div class="item-list">${ownerItems.map(itemCard).join('')}</div>`;
+  });
 
   main.innerHTML = html;
   bindItemEvents();
@@ -814,6 +929,11 @@ function itemCard(i) {
     else if (isLikely) checkCls += ' likely';
   }
   const dateLabel = i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : '';
+  // Lane pill (shown in non-kanban views)
+  const lane = itemLanes[i.id] || 'new';
+  const lanePill = (lane !== 'new' && currentView !== 'mine')
+    ? `<span class="badge b-lane-${lane}">${lane}</span>`
+    : '';
   // Age badge
   let ageBadge = '';
   if (i.meetingDate && !isDone) {
@@ -832,10 +952,114 @@ function itemCard(i) {
         <span class="badge b-meeting">${escHtml(i.meeting.split(/\s+/).slice(0,4).join(' '))}</span>
         <span class="badge b-date">${dateLabel}</span>
         ${ageBadge}
+        ${lanePill}
         ${isLikely && !multiselect ? `<span class="badge b-likely" data-confirm="${i.id}">✓ confirm done</span><span class="badge b-dismiss" data-dismiss="${i.id}">✕ keep open</span><span class="auto-note">${escHtml(i.autoResolveNote||'not re-raised')}</span>` : ''}
       </div>
     </div>
   </div>`;
+}
+
+// ── Kanban ────────────────────────────────────────────────────────────────────
+
+function renderKanban() {
+  const main = document.getElementById('main-content');
+  const myItems = allItems.filter(i =>
+    i.owner === ME &&
+    !done.has(i.id) &&
+    !dismissed.has(i.id) &&
+    !trash.has(i.id) &&
+    !mutedMeetings.has(seriesKey(i.meeting))
+  );
+
+  const lanes = ['new', 'now', 'later', 'never'];
+  const laneLabels = { new: 'New', now: 'Now', later: 'Later', never: 'Never' };
+  const laneItems = { new: [], now: [], later: [], never: [] };
+  myItems.forEach(i => {
+    const l = itemLanes[i.id] || 'new';
+    laneItems[l].push(i);
+  });
+  // Sort each lane newest first
+  lanes.forEach(l => laneItems[l].sort((a,b) => (b.meetingDate||'').localeCompare(a.meetingDate||'')));
+
+  function kanbanCard(i) {
+    const isMe = i.owner === ME;
+    const lane = itemLanes[i.id] || 'new';
+    const dateLabel = i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : '';
+    let ageBadge = '';
+    if (i.meetingDate) {
+      const days = Math.floor((Date.now() - new Date(i.meetingDate)) / 86400000);
+      if (days >= 1) {
+        const stale = days >= 14;
+        ageBadge = `<span class="badge b-age${stale?' stale':''}">${days}d</span>`;
+      }
+    }
+    return `<div class="kanban-card${isMe?' mine':''}" draggable="true" data-id="${i.id}" data-lane="${lane}">
+      <div class="kanban-card-text">${escHtml(i.text)}</div>
+      <div class="kanban-card-meta">
+        <span class="badge b-meeting">${escHtml(i.meeting.split(/\s+/).slice(0,4).join(' '))}</span>
+        <span class="badge b-date">${dateLabel}</span>
+        ${ageBadge}
+      </div>
+    </div>`;
+  }
+
+  const colsHtml = lanes.map(lane => {
+    const count = laneItems[lane].length;
+    const isNever = lane === 'never';
+    const showCards = !isNever || neverExpanded;
+    const cardsHtml = laneItems[lane].map(kanbanCard).join('');
+    return `
+      <div class="kanban-col${isNever?' never-col':''}${isNever&&neverExpanded?' expanded':''}" data-col="${lane}">
+        <div class="kanban-col-hdr">
+          <span class="kanban-col-title lane-${lane}">${laneLabels[lane]}</span>
+          <span class="kanban-col-count">${count}</span>
+        </div>
+        ${isNever ? `<button class="kanban-never-toggle" onclick="neverExpanded=!neverExpanded;save();renderKanban()">${neverExpanded?'▲ Hide':'▼ Show'}</button>` : ''}
+        ${showCards ? `<div class="kanban-cards kanban-drop-zone" data-drop="${lane}">${cardsHtml}</div>` : `<div class="kanban-drop-zone" data-drop="${lane}" style="min-height:40px;margin:6px 8px 8px;border-radius:6px;border:2px dashed var(--border)"></div>`}
+      </div>`;
+  }).join('');
+
+  main.innerHTML = `<div class="kanban-board">${colsHtml}</div>`;
+
+  bindKanbanEvents();
+  bindItemEvents();
+}
+
+function bindKanbanEvents() {
+  let dragId = null;
+
+  document.querySelectorAll('.kanban-card[draggable]').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      dragId = card.dataset.id;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      document.querySelectorAll('.kanban-drop-zone').forEach(z => z.classList.remove('drag-over'));
+    });
+  });
+
+  document.querySelectorAll('.kanban-drop-zone').forEach(zone => {
+    zone.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.kanban-drop-zone').forEach(z => z.classList.remove('drag-over'));
+      zone.classList.add('drag-over');
+    });
+    zone.addEventListener('dragleave', e => {
+      if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+    });
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const targetLane = zone.dataset.drop;
+      if (dragId && targetLane) {
+        setLane(dragId, targetLane);
+      }
+      dragId = null;
+    });
+  });
 }
 
 function bindItemEvents() {
@@ -909,7 +1133,7 @@ async function renderToday() {
     <div class="today-header">
       <div>
         <div class="today-date">${todayStr}</div>
-        <div class="today-sub">${calEvents.length} meetings · ${allItems.filter(i=>i.owner===ME&&!done.has(i.id)&&!dismissed.has(i.id)).length} open items</div>
+        <div class="today-sub">${byDate[dateLabels[0]].length} meeting${byDate[dateLabels[0]].length!==1?'s':''} · ${allItems.filter(i=>i.owner===ME&&!done.has(i.id)&&!dismissed.has(i.id)&&i.meetingDate===dateLabels[0]).length} open items</div>
       </div>
       <div class="today-window">
         <button class="today-window-btn${todayWindow===1?' active':''}" onclick="todayWindow=1;renderToday()">Today</button>
