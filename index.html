@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzE0MTQxNCIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgZm9udC1mYW1pbHk9InN5c3RlbS11aSwgLWFwcGxlLXN5c3RlbSwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjcwMCIgZm9udC1zaXplPSIxNCIgZmlsbD0iI0U4MjAxQSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgbGV0dGVyLXNwYWNpbmc9IjAuNSI+TUg8L3RleHQ+PC9zdmc+">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Action Items — Domestic Tuning</title>
 <style>
@@ -412,6 +413,9 @@
       <div class="nav-item" data-view="done" onclick="switchView('done',this)">
         Done <span class="nav-count" id="nav-done">—</span>
       </div>
+      <div class="nav-item" data-view="trash" onclick="switchView('trash',this)">
+        Trash <span class="nav-count" id="nav-trash">—</span>
+      </div>
 
       <div class="nav-section" style="margin-top:16px">Meetings</div>
       <div id="meeting-nav"></div>
@@ -424,7 +428,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.5.2 · 10/06/2026</div>
+    <div class="sidebar-footer">v1.5.4 · 10/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -438,6 +442,7 @@ const WORKER = 'https://action-items.zwhill.workers.dev';
 const ME = 'Zach';
 const S = {
   done: 'ai_done_v3',
+  trash: 'ai_trash_v3',
   muted: 'ai_muted_v3',
   mutedMeetings: 'ai_muted_meetings_v3',
   likely: 'ai_likely_v3',
@@ -457,6 +462,7 @@ let allSummaries = [];
 let todayWindow = 1; // days to show: 1=today only, 3=next 3 days
 
 const done = new Set(JSON.parse(localStorage.getItem(S.done)||'[]'));
+const trash = new Set(JSON.parse(localStorage.getItem(S.trash)||'[]'));
 const muted = new Set(JSON.parse(localStorage.getItem(S.muted)||'[]'));
 const mutedMeetings = new Set(JSON.parse(localStorage.getItem(S.mutedMeetings)||'[]'));
 const likely = new Set(JSON.parse(localStorage.getItem(S.likely)||'[]'));
@@ -466,6 +472,7 @@ const expanded = new Set(JSON.parse(localStorage.getItem(S.expanded)||'[]'));
 function save() {
   try {
     localStorage.setItem(S.done, JSON.stringify([...done]));
+    localStorage.setItem(S.trash, JSON.stringify([...trash]));
     localStorage.setItem(S.muted, JSON.stringify([...muted]));
     localStorage.setItem(S.mutedMeetings, JSON.stringify([...mutedMeetings]));
     localStorage.setItem(S.likely, JSON.stringify([...likely]));
@@ -630,6 +637,7 @@ function updateNavCounts() {
     return !done.has(id) && !dismissed.has(id) && item && !mutedMeetings.has(seriesKey(item.meeting));
   }).length;
   document.getElementById('nav-done').textContent = done.size;
+  document.getElementById('nav-trash').textContent = trash.size || '—';
 }
 
 function isTodayOrSoon(dateStr, windowDays) {
@@ -682,6 +690,21 @@ function render() {
     </div>`;
 
   let items = getFilteredItems();
+
+  if (currentView === 'trash') {
+    const trashItems = allItems.filter(i => trash.has(i.id));
+    const emptyBtn = trashItems.length ? `<button onclick="emptyTrash()" style="font-size:12px;padding:5px 14px;border-radius:6px;cursor:pointer;background:var(--red-bg);color:var(--red);border:1px solid var(--red-border);font-family:var(--font);float:right">Empty trash</button>` : '';
+    main.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span style="font-size:12px;color:var(--text3)">Deleted items. Restore or empty permanently.</span>
+      ${emptyBtn}
+    </div>` + (trashItems.length
+      ? `<div class="item-list">${trashItems.map(trashCard).join('')}</div>`
+      : '<div class="empty">Trash is empty.</div>');
+    document.querySelectorAll('[data-restore]').forEach(el => {
+      el.addEventListener('click', () => { trash.delete(el.dataset.restore); save(); updateNavCounts(); render(); });
+    });
+    return;
+  }
 
   if (currentView === 'done') {
     const doneItems = allItems.filter(i => done.has(i.id));
@@ -758,6 +781,7 @@ function getFilteredItems() {
     if (done.has(i.id) || dismissed.has(i.id)) return false;
     if (muted.has(i.owner) && i.owner !== ME) return false;
     if (mutedMeetings.has(seriesKey(i.meeting))) return false;
+    if (trash.has(i.id)) return false;
     if (filterOwner !== 'all' && i.owner !== filterOwner) return false;
     if (searchVal && !i.text.toLowerCase().includes(searchVal.toLowerCase()) && !i.owner.toLowerCase().includes(searchVal.toLowerCase())) return false;
     if (currentView === 'mine' && i.owner !== ME) return false;
@@ -1043,6 +1067,21 @@ function renderContext() {
 
 // ── People view ───────────────────────────────────────────────────────────────
 
+
+function trashCard(i) {
+  return `<div class="item" style="opacity:0.6">
+    <div class="item-body" style="padding-left:0">
+      <div class="item-text done">${escHtml(i.text)}</div>
+      <div class="item-meta">
+        <span class="badge b-other">${escHtml(i.owner)}</span>
+        <span class="badge b-meeting">${escHtml(i.meeting.split(/\s+/).slice(0,4).join(' '))}</span>
+        <span class="badge b-date">${i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : ''}</span>
+        <button data-restore="${i.id}" style="font-size:11px;padding:2px 10px;border-radius:99px;cursor:pointer;background:transparent;color:var(--green);border:1px solid var(--green-border);font-family:var(--font);transition:all 0.15s">Restore</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderPeople() {
   const counts = {};
   allItems.forEach(i => { counts[i.owner] = (counts[i.owner]||0)+1; });
@@ -1193,10 +1232,14 @@ function bulkDismiss() {
 }
 
 function bulkDelete() {
-  if (!confirm(`Delete ${selected.size} item${selected.size!==1?'s':''}? This cannot be undone.`)) return;
-  allItems = allItems.filter(i => !selected.has(i.id));
-  selected.forEach(id => { done.delete(id); dismissed.delete(id); likely.delete(id); });
+  selected.forEach(id => { trash.add(id); done.delete(id); dismissed.delete(id); likely.delete(id); });
   selected.clear(); save(); updateNavCounts(); renderBulkBar(); render();
+}
+
+function emptyTrash() {
+  if (!confirm(`Permanently delete ${trash.size} item${trash.size!==1?'s':''}? This cannot be undone.`)) return;
+  allItems = allItems.filter(i => !trash.has(i.id));
+  trash.clear(); save(); updateNavCounts(); render();
 }
 
 function bulkOwner() {
