@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.7 · Jun 12, 2026 12:18 AM</div>
+    <div class="sidebar-footer">v1.9.8 · Jun 12, 2026 09:50 AM</div></div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1742,7 +1742,8 @@ async function renderToday() {
         const isExpanded = expanded.has('today::' + ev.id);
         const hasMine = mineItems.length > 0;
         const hasBody = ev.body && ev.body.trim().length > 0;
-        const isEmpty = evItems.length === 0 && !summary && !hasBody;
+        const hasAttendees = ev.attendees && ev.attendees.filter(a => !a.includes('zachhill')).length > 0;
+        const isEmpty = evItems.length === 0 && !summary && !hasBody && !hasAttendees;
 
         // Format time
         let timeStr = '';
@@ -1758,26 +1759,46 @@ async function renderToday() {
             <div class="today-meeting-meta">
               ${mineItems.length ? `<span class="badge b-me">${mineItems.length} mine</span>` : ''}
               ${otherItems.length ? `<span class="badge b-other">${otherItems.length} others</span>` : ''}
-              ${!evItems.length && !summary && !hasBody ? `<span style="font-size:11px;color:var(--text3)">no notes</span>` : ''}
+              ${!evItems.length && !summary && !hasBody && !hasAttendees ? `<span style="font-size:11px;color:var(--text3)">no notes</span>` : ''}
               <span style="color:var(--text3);font-size:12px">${isExpanded?'▲':'▼'}</span>
             </div>
           </div>
           <div class="today-meeting-body${isExpanded?' open':''}">`;
 
-        // Agenda from invite body
-        if (hasBody) {
-          const bodyText = ev.body.trim();
-          // Try to detect bullet/numbered list lines
-          const lines = bodyText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-          const isList = lines.some(l => /^[-•*]|^\d+[.)]\s/.test(l));
-          if (isList) {
-            const itemsHtml = lines.map(l => {
-              const clean = l.replace(/^[-•*]\s*|^\d+[.)]\s*/, '');
-              return `<div class="today-agenda-item"><span class="today-agenda-bullet">›</span><span>${escHtml(clean)}</span></div>`;
-            }).join('');
-            html += `<div class="today-agenda"><div class="today-agenda-label">Agenda</div>${itemsHtml}</div>`;
-          } else {
-            html += `<div class="today-agenda"><div class="today-agenda-label">Agenda</div><div class="today-agenda-text">${escHtml(bodyText)}</div></div>`;
+        // Agenda from invite body + attendees
+        if (hasBody || (ev.attendees && ev.attendees.length > 0)) {
+          // Extract first names from attendee emails
+          const firstNames = (ev.attendees || [])
+            .filter(a => !a.includes('zachhill'))
+            .map(a => {
+              const local = a.split('@')[0].toLowerCase();
+              // Holley pattern firstnamelastname — take chars up to where caps would be
+              // Best heuristic: take first 'word' if separated, else first 4-6 chars capitalized
+              const match = local.match(/^([a-z]{2,8}?)(?=[a-z]{2,}$)/);
+              const first = match ? match[1] : local.slice(0, 6);
+              return first.charAt(0).toUpperCase() + first.slice(1);
+            })
+            .filter((n, i, arr) => arr.indexOf(n) === i); // dedupe
+
+          const attendeeLine = firstNames.length > 0
+            ? `<div style="font-size:11px;color:var(--text3);margin-bottom:${hasBody?'8px':'0'}">${firstNames.join(', ')}</div>`
+            : '';
+
+          if (hasBody) {
+            const bodyText = ev.body.trim();
+            const lines = bodyText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            const isList = lines.some(l => /^[-•*]|^\d+[.)]\s/.test(l));
+            if (isList) {
+              const itemsHtml = lines.map(l => {
+                const clean = l.replace(/^[-•*]\s*|^\d+[.)]\s*/, '');
+                return `<div class="today-agenda-item"><span class="today-agenda-bullet">›</span><span>${escHtml(clean)}</span></div>`;
+              }).join('');
+              html += `<div class="today-agenda"><div class="today-agenda-label">Agenda</div>${attendeeLine}${itemsHtml}</div>`;
+            } else {
+              html += `<div class="today-agenda"><div class="today-agenda-label">Agenda</div>${attendeeLine}<div class="today-agenda-text">${escHtml(bodyText)}</div></div>`;
+            }
+          } else if (attendeeLine) {
+            html += `<div class="today-agenda"><div class="today-agenda-label">With</div>${attendeeLine}</div>`;
           }
         }
 
@@ -2279,7 +2300,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.7';
+const CURRENT_VERSION = '1.9.8';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
