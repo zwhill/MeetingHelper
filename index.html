@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.2 · Jun 11, 2026 11:59 PM</div>
+    <div class="sidebar-footer">v1.9.3 · Jun 12, 2026 12:06 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1639,6 +1639,9 @@ function bindItemEvents() {
       e.stopPropagation();
       const id = el.dataset.dismiss;
       const card = el.closest('.item');
+      // "Keep open" — just remove from likely, do NOT dismiss the item
+      likely.delete(id);
+      save(); updateNavCounts();
       if (card) {
         card.style.transition = 'opacity 0.25s, transform 0.25s, max-height 0.3s 0.2s, margin 0.3s 0.2s, padding 0.3s 0.2s';
         card.style.opacity = '0';
@@ -1652,14 +1655,10 @@ function bindItemEvents() {
             card.style.paddingTop = '0';
             card.style.paddingBottom = '0';
           });
-          setTimeout(() => {
-            card.remove();
-            // Only update nav counts — no full re-render
-            dismissed.add(id); likely.delete(id); save(); updateNavCounts();
-          }, 320);
+          setTimeout(() => { card.remove(); }, 320);
         }, 260);
       } else {
-        dismissed.add(id); likely.delete(id); save(); updateNavCounts(); render();
+        render();
       }
     });
   });
@@ -2280,7 +2279,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.2';
+const CURRENT_VERSION = '1.9.3';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
