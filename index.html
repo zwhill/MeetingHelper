@@ -429,7 +429,25 @@
   }
   .kanban-quick-add-btn:hover { background: var(--red); color: #fff; }
 
-  /* ── Today completed memory ── */
+  .today-agenda {
+    background: var(--bg); border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    border-radius: 6px; padding: 10px 13px;
+    margin-bottom: 12px;
+  }
+  .today-agenda-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--blue); margin-bottom: 6px; font-weight: 600;
+  }
+  .today-agenda-text {
+    font-size: 12px; color: var(--text2); line-height: 1.7;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .today-agenda-item {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 2px 0; font-size: 12px; color: var(--text2); line-height: 1.6;
+  }
+  .today-agenda-bullet { color: var(--blue); flex-shrink: 0; margin-top: 2px; }
   .today-memory {
     margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--border);
@@ -676,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.8.0 · Jun 11, 2026 3:45 PM</div>
+    <div class="sidebar-footer">v1.8.3 · Jun 11, 2026 3:45 PM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -839,7 +857,21 @@ function detectAutoResolves() {
 }
 
 function seriesKey(name) {
-  return name.split(/\s+/).slice(0,3).join(' ').toLowerCase();
+  if (!name) return '';
+  let s = name.toLowerCase();
+  // Specific content fixes
+  s = s.replace(/\b20\+\s+ford\b/, '2020+ ford');
+  // Normalize separators: & : _ / – — all become -
+  s = s.replace(/[&:_\/\u2013\u2014]/g, '-');
+  // Collapse whitespace around dashes
+  s = s.replace(/\s*-+\s*/g, '-');
+  // Strip noise suffixes in parens
+  s = s.replace(/\s*\((recurring|test|tuning|check-in|checkin)\)\s*/gi, '');
+  // Collapse multiple spaces/dashes
+  s = s.replace(/\s+/g, ' ').replace(/-+/g, '-');
+  // Trim dashes and spaces
+  s = s.replace(/^[-\s]+|[-\s]+$/g, '');
+  return s;
 }
 
 function updateSyncInfo(status) {
@@ -931,7 +963,10 @@ function switchMeeting(meeting, el) {
   render();
 }
 
+let _selectBarIds = [];
+
 function inlineSelectBar(items) {
+  _selectBarIds = items.map(i => i.id);
   const allSelected = items.length > 0 && items.every(i => selected.has(i.id));
   const nSelected = items.filter(i => selected.has(i.id)).length;
   const label = multiselect
@@ -940,12 +975,13 @@ function inlineSelectBar(items) {
   const countLabel = multiselect && nSelected > 0 ? `${nSelected} selected` : '';
   return `<div class="inline-select-bar">
     <span class="inline-select-count">${countLabel}</span>
-    <button class="inline-select-toggle${multiselect?' active':''}" onclick="${multiselect ? `selectAllVisible_items(${JSON.stringify(items.map(i=>i.id))})` : 'toggleMultiselect(true)'}">${label}</button>
+    <button class="inline-select-toggle${multiselect?' active':''}" onclick="${multiselect ? 'selectAllVisible_items()' : 'toggleMultiselect(true)'}">${label}</button>
     ${multiselect ? `<button class="inline-select-toggle" style="margin-left:4px" onclick="toggleMultiselect(false)">Cancel</button>` : ''}
   </div>`;
 }
 
-function selectAllVisible_items(ids) {
+function selectAllVisible_items() {
+  const ids = _selectBarIds;
   const allSelected = ids.every(id => selected.has(id));
   if (allSelected) ids.forEach(id => selected.delete(id));
   else ids.forEach(id => selected.add(id));
@@ -1528,7 +1564,7 @@ function bindItemEvents() {
       e.stopPropagation();
       const id = el.dataset.confirm;
       const card = el.closest('.item');
-      if (card && currentView === 'today') {
+      if (card) {
         card.style.transition = 'opacity 0.25s, transform 0.25s, max-height 0.3s 0.2s, margin 0.3s 0.2s, padding 0.3s 0.2s';
         card.style.opacity = '0';
         card.style.transform = 'translateX(18px)';
@@ -1541,13 +1577,16 @@ function bindItemEvents() {
             card.style.paddingTop = '0';
             card.style.paddingBottom = '0';
           });
-          setTimeout(() => { card.remove(); }, 320);
-          done.add(id); likely.delete(id); save(); updateNavCounts();
-          // Update nav count badge without re-render
-          document.getElementById('nav-today') && (document.getElementById('nav-today').textContent = (() => {
-            const open2 = allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id) && !mutedMeetings.has(seriesKey(i.meeting)));
-            return open2.filter(i => i.owner === ME && isTodayOrSoon(i.meetingDate, 1)).length || '—';
-          })());
+          setTimeout(() => {
+            card.remove();
+            done.add(id); likely.delete(id); save(); updateNavCounts();
+            // Update today badge if needed
+            const todayEl = document.getElementById('nav-today');
+            if (todayEl) {
+              const open2 = allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id) && !mutedMeetings.has(seriesKey(i.meeting)));
+              todayEl.textContent = open2.filter(i => i.owner === ME && isTodayOrSoon(i.meetingDate, 1)).length || '—';
+            }
+          }, 320);
         }, 260);
       } else {
         done.add(id); likely.delete(id); save(); updateNavCounts(); render();
@@ -1559,7 +1598,7 @@ function bindItemEvents() {
       e.stopPropagation();
       const id = el.dataset.dismiss;
       const card = el.closest('.item');
-      if (card && currentView === 'today') {
+      if (card) {
         card.style.transition = 'opacity 0.25s, transform 0.25s, max-height 0.3s 0.2s, margin 0.3s 0.2s, padding 0.3s 0.2s';
         card.style.opacity = '0';
         card.style.transform = 'translateX(-18px)';
@@ -1572,8 +1611,11 @@ function bindItemEvents() {
             card.style.paddingTop = '0';
             card.style.paddingBottom = '0';
           });
-          setTimeout(() => { card.remove(); }, 320);
-          dismissed.add(id); likely.delete(id); save(); updateNavCounts();
+          setTimeout(() => {
+            card.remove();
+            // Only update nav counts — no full re-render
+            dismissed.add(id); likely.delete(id); save(); updateNavCounts();
+          }, 320);
         }, 260);
       } else {
         dismissed.add(id); likely.delete(id); save(); updateNavCounts(); render();
@@ -1664,7 +1706,8 @@ async function renderToday() {
         const summary = allSummaries.find(s => s.seriesKey === sk);
         const isExpanded = expanded.has('today::' + ev.id);
         const hasMine = mineItems.length > 0;
-        const isEmpty = evItems.length === 0 && !summary;
+        const hasBody = ev.body && ev.body.trim().length > 0;
+        const isEmpty = evItems.length === 0 && !summary && !hasBody;
 
         // Format time
         let timeStr = '';
@@ -1680,11 +1723,28 @@ async function renderToday() {
             <div class="today-meeting-meta">
               ${mineItems.length ? `<span class="badge b-me">${mineItems.length} mine</span>` : ''}
               ${otherItems.length ? `<span class="badge b-other">${otherItems.length} others</span>` : ''}
-              ${!evItems.length && !summary ? `<span style="font-size:11px;color:var(--text3)">no notes</span>` : ''}
+              ${!evItems.length && !summary && !hasBody ? `<span style="font-size:11px;color:var(--text3)">no notes</span>` : ''}
               <span style="color:var(--text3);font-size:12px">${isExpanded?'▲':'▼'}</span>
             </div>
           </div>
           <div class="today-meeting-body${isExpanded?' open':''}">`;
+
+        // Agenda from invite body
+        if (hasBody) {
+          const bodyText = ev.body.trim();
+          // Try to detect bullet/numbered list lines
+          const lines = bodyText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+          const isList = lines.some(l => /^[-•*]|^\d+[.)]\s/.test(l));
+          if (isList) {
+            const itemsHtml = lines.map(l => {
+              const clean = l.replace(/^[-•*]\s*|^\d+[.)]\s*/, '');
+              return `<div class="today-agenda-item"><span class="today-agenda-bullet">›</span><span>${escHtml(clean)}</span></div>`;
+            }).join('');
+            html += `<div class="today-agenda"><div class="today-agenda-label">Agenda</div>${itemsHtml}</div>`;
+          } else {
+            html += `<div class="today-agenda"><div class="today-agenda-label">Agenda</div><div class="today-agenda-text">${escHtml(bodyText)}</div></div>`;
+          }
+        }
 
         // Summary
         if (summary) {
