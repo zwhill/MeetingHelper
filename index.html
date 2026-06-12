@@ -252,12 +252,12 @@
   .b-me { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
   .b-other { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
   .b-meeting { background: var(--blue-bg); color: var(--blue); border: 1px solid #0a2540; }
-  .b-date { background: var(--surface2); color: #aaa; border: 1px solid var(--border2); }
+  .b-date { background: var(--surface2); color: #ccc; border: 1px solid #444; }
   .b-likely { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); cursor: pointer; }
   .b-dismiss { background: #1c1c1c; color: #bbb; border: 1px solid #444; cursor: pointer; }
   .b-dismiss:hover { border-color: #666; color: #e8e8e8; }
-  .b-age { background: var(--surface2); color: #999; border: 1px solid #3a3a3a; font-family: var(--mono); }
-  .b-age.stale { color: #c9930a; border-color: #3a2e00; background: #1a1500; }
+  .b-age { background: #1e1e1e; color: #bbb; border: 1px solid #444; font-family: var(--mono); }
+  .b-age.stale { color: #e8a020; border-color: #4a3800; background: #221a00; }
 
   .auto-note { font-size: 11px; color: var(--text3); font-style: italic; }
 
@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.8.3 · Jun 11, 2026 3:45 PM</div>
+    <div class="sidebar-footer">v1.8.5 · Jun 12, 2026 02:54 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -720,6 +720,7 @@ const S = {
 };
 
 let allItems = [];
+let calEvents = [];  // hoisted — used by renderToday and submitQuickAdd
 let currentView = 'mine';
 let currentMeetingFilter = null;
 let searchVal = '';
@@ -1140,9 +1141,11 @@ function itemCard(i) {
   let ageBadge = '';
   if (i.meetingDate && !isDone) {
     const days = Math.floor((Date.now() - new Date(i.meetingDate)) / 86400000);
-    if (days >= 1) {
+    if (days === 0) {
+      ageBadge = `<span class="badge b-age" style="color:var(--green);border-color:var(--green-border);background:var(--green-bg)">today</span>`;
+    } else if (days > 0) {
       const stale = days >= 14;
-      ageBadge = `<span class="badge b-age${stale?' stale':''}" title="Created ${days} days ago">${days}d</span>`;
+      ageBadge = `<span class="badge b-age${stale?' stale':''}" title="${days} days ago">${days}d</span>`;
     }
   }
   return `<div class="${cls}" ${multiselect ? `data-selectable="${i.id}"` : `data-openable="${i.id}"`}>
@@ -1176,7 +1179,10 @@ function getLaneItems(myItems) {
       const ai = orderMap[a.id] ?? 99999;
       const bi = orderMap[b.id] ?? 99999;
       if (ai !== bi) return ai - bi;
-      return (b.meetingDate||'').localeCompare(a.meetingDate||'');
+      // No saved order — newest date first, then by createdAt for same-day
+      const dateDiff = (b.meetingDate||'').localeCompare(a.meetingDate||'');
+      if (dateDiff !== 0) return dateDiff;
+      return (b.createdAt||'').localeCompare(a.createdAt||'');
     });
   });
   return laneItems;
@@ -1208,7 +1214,9 @@ function renderKanban() {
     let ageBadge = '';
     if (i.meetingDate) {
       const days = Math.floor((Date.now() - new Date(i.meetingDate)) / 86400000);
-      if (days >= 1) {
+      if (days === 0) {
+        ageBadge = `<span class="badge b-age" style="color:var(--green);border-color:var(--green-border);background:var(--green-bg)">today</span>`;
+      } else if (days > 0) {
         const stale = days >= 14;
         ageBadge = `<span class="badge b-age${stale?' stale':''}">${days}d</span>`;
       }
@@ -1391,13 +1399,26 @@ function submitQuickAdd() {
   const text = input.value.trim();
   if (!text) return;
 
+  // Detect currently active meeting from calendar
+  const now = new Date();
+  let meetingTag = 'Manual';
+  if (typeof calEvents !== 'undefined' && calEvents.length) {
+    const active = calEvents.find(ev => {
+      if (!ev.start || !ev.end) return false;
+      const start = new Date(ev.start);
+      const end = new Date(ev.end);
+      return now >= start && now <= end;
+    });
+    if (active) meetingTag = active.subject || 'Manual';
+  }
+
   const id = 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
   const today = new Date().toISOString().slice(0, 10);
   const newItem = {
     id,
     text,
     owner: ME,
-    meeting: 'Manual',
+    meeting: meetingTag,
     meetingDate: today,
     status: 'open',
     confirmedDone: false,
@@ -1406,16 +1427,14 @@ function submitQuickAdd() {
   };
 
   allItems.push(newItem);
-  // No lane assignment needed — 'new' is default
   save();
   updateNavCounts();
 
-  // Persist to worker alongside existing items
   fetch(`${WORKER}/sync`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Sync-Token': '' },
     body: JSON.stringify({ items: [newItem], processedFiles: {}, filesProcessed: 0 }),
-  }).catch(() => {}); // fire and forget — item is already in local state
+  }).catch(() => {});
 
   input.value = '';
   input.style.height = 'auto';
@@ -1632,7 +1651,7 @@ async function renderToday() {
   main.innerHTML = '<div class="loading"><span class="spinner"></span>Loading calendar...</div>';
 
   // Fetch calendar events from Worker KV (populated by sync script)
-  let calEvents = [];
+  calEvents = [];
   try {
     const res = await fetch(`${WORKER}/calendar`);
     if (res.ok) calEvents = await res.json();
@@ -1729,6 +1748,34 @@ async function renderToday() {
           </div>
           <div class="today-meeting-body${isExpanded?' open':''}">`;
 
+        // Attendee cross-reference
+        if (ev.attendees && ev.attendees.length > 0) {
+          const attendeeNames = ev.attendees
+            .filter(a => !a.includes('zachhill'))
+            .map(a => {
+              const local = a.split('@')[0];
+              // Holley pattern: firstnamelastname — extract first name
+              return local.charAt(0).toUpperCase() + local.slice(1).replace(/[a-z]+$/, '');
+            });
+          if (attendeeNames.length > 0) {
+            const chips = attendeeNames.map(name => {
+              const ownerItems = allItems.filter(i =>
+                !done.has(i.id) && !dismissed.has(i.id) &&
+                i.owner.toLowerCase().startsWith(name.toLowerCase())
+              );
+              const seriesItems = ownerItems.filter(i => seriesKey(i.meeting) === sk);
+              const badge = ownerItems.length > 0
+                ? `<span style="font-size:10px;color:var(--text3);margin-left:4px">${seriesItems.length > 0 ? `${seriesItems.length} here` : `${ownerItems.length} open`}</span>`
+                : '';
+              return `<span style="display:inline-flex;align-items:center;background:var(--surface2);border:1px solid var(--border2);border-radius:99px;padding:2px 8px;font-size:11px;color:var(--text2)">${name}${badge}</span>`;
+            }).join('');
+            html += `<div style="margin-bottom:10px">
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-bottom:6px">Attendees</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+            </div>`;
+          }
+        }
+
         // Agenda from invite body
         if (hasBody) {
           const bodyText = ev.body.trim();
@@ -1746,10 +1793,31 @@ async function renderToday() {
           }
         }
 
-        // Summary
+        // Summary — most recent
         if (summary) {
           html += `<div class="today-summary-label">Last session · ${summary.meetingDate}</div>
             <div class="today-summary">${escHtml(summary.summary)}</div>`;
+
+          // Prior context — next 2 older summaries for this series
+          const priorSummaries = allSummaries
+            .filter(s => s.seriesKey === sk && s.meetingDate !== summary.meetingDate)
+            .sort((a, b) => b.meetingDate.localeCompare(a.meetingDate))
+            .slice(0, 2);
+
+          if (priorSummaries.length > 0) {
+            const priorKey = 'prior::' + ev.id;
+            const priorExpanded = expanded.has(priorKey);
+            html += `<div style="margin-top:6px">
+              <div style="font-size:11px;color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;gap:4px" data-mem-key="${escAttr(priorKey)}">
+                ${priorExpanded ? '▲' : '▼'} <span>${priorExpanded ? 'Hide' : 'Show'} prior sessions (${priorSummaries.length})</span>
+              </div>
+              ${priorExpanded ? priorSummaries.map(s => `
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                  <div class="today-summary-label">${s.meetingDate}</div>
+                  <div class="today-summary" style="opacity:0.75">${escHtml(s.summary)}</div>
+                </div>`).join('') : ''}
+            </div>`;
+          }
         } else {
           html += `<div class="today-no-summary">No prior meeting notes found.</div>`;
         }
