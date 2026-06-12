@@ -84,15 +84,19 @@
   .select-all-bar:hover { border-color: var(--red); }
   .select-all-bar .check { flex-shrink: 0; }
   .select-all-label { font-size: 12px; color: var(--text2); user-select: none; }
-  .btn-multiselect {
-    font-size: 12px; padding: 5px 12px;
-    background: transparent; color: var(--text2);
-    border: 1px solid var(--border2); border-radius: 6px;
-    cursor: pointer; font-family: var(--font);
-    transition: all 0.15s;
+  .inline-select-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
   }
-  .btn-multiselect:hover { border-color: var(--text3); color: var(--text); }
-  .btn-multiselect.active { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+  .inline-select-count { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .inline-select-toggle {
+    font-size: 11px; color: var(--text3); cursor: pointer;
+    background: transparent; border: 1px solid var(--border2);
+    border-radius: 5px; padding: 3px 10px; font-family: var(--font);
+    transition: all 0.1s;
+  }
+  .inline-select-toggle:hover { color: var(--text); border-color: var(--text3); }
+  .inline-select-toggle.active { color: var(--red); border-color: var(--red-border); background: var(--red-bg); }
   .item.selected { border-color: var(--red) !important; background: #1f1212; }
   .item.selected .check { border-color: var(--red); background: var(--red-bg); }
   .bulk-bar {
@@ -400,7 +404,50 @@
   .kanban-col.never-col { opacity: 0.6; }
   .kanban-col.never-col.expanded { opacity: 1; }
 
-  /* ── Card modal ── */
+  /* ── Kanban quick-add ── */
+  .kanban-quick-add {
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .kanban-quick-add-form {
+    display: flex; gap: 6px; align-items: flex-start;
+  }
+  .kanban-quick-add-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border2);
+    border-radius: 6px; color: var(--text); font-size: 12px;
+    padding: 7px 10px; font-family: var(--font); resize: none;
+    min-height: 32px; max-height: 80px; overflow-y: auto;
+    transition: border-color 0.1s;
+  }
+  .kanban-quick-add-input:focus { outline: none; border-color: var(--text3); }
+  .kanban-quick-add-input::placeholder { color: var(--text3); }
+  .kanban-quick-add-btn {
+    background: var(--red-bg); border: 1px solid var(--red-border);
+    border-radius: 6px; color: var(--red); font-size: 12px;
+    padding: 7px 12px; cursor: pointer; font-family: var(--font);
+    white-space: nowrap; transition: all 0.1s; flex-shrink: 0;
+  }
+  .kanban-quick-add-btn:hover { background: var(--red); color: #fff; }
+
+  /* ── Today completed memory ── */
+  .today-memory {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .today-memory-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text3); margin-bottom: 6px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .today-memory-label:hover { color: var(--text2); }
+  .today-memory-items { display: flex; flex-direction: column; gap: 4px; }
+  .today-memory-item {
+    font-size: 12px; color: var(--text3); line-height: 1.5;
+    padding: 5px 8px; border-radius: 5px; background: var(--bg);
+    border: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start;
+  }
+  .today-memory-item-check { color: var(--green); flex-shrink: 0; font-size: 11px; margin-top: 1px; }
+  .today-memory-item-meta { font-size: 10px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
   .kmodal-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.7);
@@ -592,7 +639,7 @@
     <div class="logo">Domestic Tuning <span>//</span> Action Items</div>
     <div class="sync-info" id="sync-info">loading...</div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center"><button class="btn-multiselect" id="btn-multiselect" onclick="toggleMultiselect()">Select</button><button class="btn-sync" id="btn-sync" onclick="manualSync()">Sync now</button></div>
+  <div style="display:flex;gap:8px;align-items:center"><button class="btn-sync" id="btn-sync" onclick="manualSync()">Sync now</button></div>
 </header>
 
 <div class="shell">
@@ -629,7 +676,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.7.7 · Jun 11, 2026 3:45 PM</div>
+    <div class="sidebar-footer">v1.8.0 · Jun 11, 2026 3:45 PM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -884,7 +931,27 @@ function switchMeeting(meeting, el) {
   render();
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
+function inlineSelectBar(items) {
+  const allSelected = items.length > 0 && items.every(i => selected.has(i.id));
+  const nSelected = items.filter(i => selected.has(i.id)).length;
+  const label = multiselect
+    ? (allSelected ? 'Deselect all' : `Select all (${items.length})`)
+    : 'Select';
+  const countLabel = multiselect && nSelected > 0 ? `${nSelected} selected` : '';
+  return `<div class="inline-select-bar">
+    <span class="inline-select-count">${countLabel}</span>
+    <button class="inline-select-toggle${multiselect?' active':''}" onclick="${multiselect ? `selectAllVisible_items(${JSON.stringify(items.map(i=>i.id))})` : 'toggleMultiselect(true)'}">${label}</button>
+    ${multiselect ? `<button class="inline-select-toggle" style="margin-left:4px" onclick="toggleMultiselect(false)">Cancel</button>` : ''}
+  </div>`;
+}
+
+function selectAllVisible_items(ids) {
+  const allSelected = ids.every(id => selected.has(id));
+  if (allSelected) ids.forEach(id => selected.delete(id));
+  else ids.forEach(id => selected.add(id));
+  renderBulkBar();
+  render();
+}
 
 function render() {
   const main = document.getElementById('main-content');
@@ -930,7 +997,7 @@ function render() {
 
   if (currentView === 'done') {
     const doneItems = allItems.filter(i => done.has(i.id));
-    main.innerHTML = toolbarHtml + (doneItems.length
+    main.innerHTML = toolbarHtml + inlineSelectBar(doneItems) + (doneItems.length
       ? `<div class="item-list">${doneItems.map(itemCard).join('')}</div>`
       : '<div class="empty">Nothing marked done yet.</div>');
     bindItemEvents();
@@ -944,6 +1011,7 @@ function render() {
         <div class="stat"><div class="stat-label">Likely done</div><div class="stat-value amber">${likelyItems.length}</div></div>
       </div>
       ${toolbarHtml}
+      ${inlineSelectBar(likelyItems)}
       ${likelyItems.length ? `<div class="item-list">${likelyItems.map(itemCard).join('')}</div>` : '<div class="empty">No items flagged as likely done.</div>'}`;
     bindItemEvents();
     return;
@@ -970,10 +1038,7 @@ function render() {
   }
 
   // Group: yours first, then by owner
-  let html = statsHtml + toolbarHtml;
-
-  const allSelectedAll = items.length > 0 && items.every(i => selected.has(i.id));
-  if (multiselect) html += `<div class="select-all-bar" onclick="selectAllVisible()"><div class="check${allSelectedAll?' done':''}" style="pointer-events:none"></div><span class="select-all-label">${allSelectedAll ? 'Deselect all' : 'Select all'} (${items.length})</span></div>`;
+  let html = statsHtml + toolbarHtml + inlineSelectBar(items);
   const grouped = {};
   items.forEach(i => {
     if (!grouped[i.owner]) grouped[i.owner] = [];
@@ -1131,12 +1196,20 @@ function renderKanban() {
     const isNever = lane === 'never';
     const showCards = !isNever || neverExpanded;
     const cardsHtml = laneItems[lane].map(kanbanCard).join('');
+    const quickAdd = lane === 'new' ? `
+      <div class="kanban-quick-add">
+        <div class="kanban-quick-add-form">
+          <textarea class="kanban-quick-add-input" id="kanban-quick-add-input" placeholder="Add a task..." rows="1"></textarea>
+          <button class="kanban-quick-add-btn" id="kanban-quick-add-btn">+ Add</button>
+        </div>
+      </div>` : '';
     return `
       <div class="kanban-col${isNever?' never-col':''}${isNever&&neverExpanded?' expanded':''}" data-col="${lane}">
         <div class="kanban-col-hdr">
           <span class="kanban-col-title lane-${lane}">${laneLabels[lane]}</span>
           <span class="kanban-col-count">${count}</span>
         </div>
+        ${quickAdd}
         ${isNever ? `<button class="kanban-never-toggle" onclick="neverExpanded=!neverExpanded;save();renderKanban()">${neverExpanded?'▲ Hide':'▼ Show'}</button>` : ''}
         ${showCards ? `<div class="kanban-cards kanban-drop-zone" data-drop="${lane}">${cardsHtml}</div>` : `<div class="kanban-drop-zone" data-drop="${lane}" style="min-height:40px;margin:6px 8px 8px;border-radius:6px;border:2px dashed var(--border)"></div>`}
       </div>`;
@@ -1276,7 +1349,59 @@ function moveCardInLane(id, dir) {
   renderKanban();
 }
 
+function submitQuickAdd() {
+  const input = document.getElementById('kanban-quick-add-input');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  const id = 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  const today = new Date().toISOString().slice(0, 10);
+  const newItem = {
+    id,
+    text,
+    owner: ME,
+    meeting: 'Manual',
+    meetingDate: today,
+    status: 'open',
+    confirmedDone: false,
+    dismissed: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  allItems.push(newItem);
+  // No lane assignment needed — 'new' is default
+  save();
+  updateNavCounts();
+
+  // Persist to worker alongside existing items
+  fetch(`${WORKER}/sync`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Sync-Token': '' },
+    body: JSON.stringify({ items: [newItem], processedFiles: {}, filesProcessed: 0 }),
+  }).catch(() => {}); // fire and forget — item is already in local state
+
+  input.value = '';
+  input.style.height = 'auto';
+  renderKanban();
+}
+
 function bindKanbanEvents() {
+  // Quick-add
+  const qaInput = document.getElementById('kanban-quick-add-input');
+  const qaBtn = document.getElementById('kanban-quick-add-btn');
+  if (qaInput && qaBtn) {
+    // Auto-grow textarea
+    qaInput.addEventListener('input', () => {
+      qaInput.style.height = 'auto';
+      qaInput.style.height = Math.min(qaInput.scrollHeight, 80) + 'px';
+    });
+    qaInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitQuickAdd(); }
+    });
+    qaBtn.addEventListener('click', submitQuickAdd);
+  }
+
   let dragId = null;
   let dragLane = null;
 
@@ -1584,6 +1709,34 @@ async function renderToday() {
           html += `</div>`;
         }
 
+        // Completed memory — last 3 occurrences of this series, max 8 done items
+        const doneMemory = allItems.filter(i =>
+          done.has(i.id) &&
+          seriesKey(i.meeting) === sk
+        ).sort((a, b) => (b.meetingDate||'').localeCompare(a.meetingDate||''));
+
+        if (doneMemory.length > 0) {
+          // Get last 3 distinct meeting dates
+          const recentDates = [...new Set(doneMemory.map(i => i.meetingDate))].slice(0, 3);
+          const memItems = doneMemory.filter(i => recentDates.includes(i.meetingDate)).slice(0, 8);
+          const memKey = 'mem::' + ev.id;
+          const memExpanded = expanded.has(memKey);
+          html += `<div class="today-memory">
+            <div class="today-memory-label" data-mem-key="${escAttr(memKey)}">
+              <span>${memExpanded ? '▲' : '▼'}</span>
+              <span>Completed in prior sessions (${memItems.length})</span>
+            </div>
+            ${memExpanded ? `<div class="today-memory-items">${memItems.map(i => `
+              <div class="today-memory-item">
+                <span class="today-memory-item-check">✓</span>
+                <div>
+                  <div>${escHtml(i.text)}</div>
+                  <div class="today-memory-item-meta">${i.owner} · ${i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : ''}</div>
+                </div>
+              </div>`).join('')}</div>` : ''}
+          </div>`;
+        }
+
         html += `</div></div>`;
       });
     }
@@ -1603,6 +1756,16 @@ async function renderToday() {
   document.querySelectorAll('.today-meeting-hdr[data-today-meeting]').forEach(el => {
     el.addEventListener('click', () => {
       const key = 'today::' + el.dataset.todayMeeting;
+      if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+      save(); renderToday();
+    });
+  });
+
+  // Bind memory toggles
+  document.querySelectorAll('[data-mem-key]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const key = el.dataset.memKey;
       if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
       save(); renderToday();
     });
@@ -1913,24 +2076,10 @@ function escAttr(s) {
 
 // ── Multiselect ───────────────────────────────────────────────────────────────
 
-function selectAllVisible() {
-  const items = getFilteredItems();
-  const allSelected = items.every(i => selected.has(i.id));
-  if (allSelected) {
-    items.forEach(i => selected.delete(i.id));
-  } else {
-    items.forEach(i => selected.add(i.id));
-  }
-  renderBulkBar();
-  render();
-}
 
-function toggleMultiselect() {
-  multiselect = !multiselect;
+function toggleMultiselect(force) {
+  multiselect = force !== undefined ? force : !multiselect;
   selected.clear();
-  const btn = document.getElementById('btn-multiselect');
-  btn.classList.toggle('active', multiselect);
-  btn.textContent = multiselect ? 'Cancel' : 'Select';
   renderBulkBar();
   render();
 }
