@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v2.0.3 · Jun 12, 2026 11:21 AM</div>
+    <div class="sidebar-footer">v2.0.5 · Jun 12, 2026 11:51 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -897,6 +897,16 @@ async function manualSync() {
   const btn = document.getElementById('btn-sync');
   btn.textContent = 'Syncing...';
   btn.className = 'btn-sync syncing';
+
+  // Fire the local sync script if the server is running
+  try {
+    await fetch('http://localhost:7755/run-sync', { method: 'POST', signal: AbortSignal.timeout(3000) });
+    // Give the script a few seconds to run before re-fetching from worker
+    await new Promise(r => setTimeout(r, 4000));
+  } catch(e) {
+    // Local server not running — that's fine, just refresh from worker
+  }
+
   await loadItems();
   btn.textContent = 'Sync now';
   btn.className = 'btn-sync';
@@ -1444,6 +1454,38 @@ function moveCardInLane(id, dir) {
   renderKanban();
 }
 
+function submitTodayQuickAdd(input) {
+  const text = input.value.trim();
+  const meetingTag = input.dataset.meeting || 'Manual';
+  if (!text) return;
+
+  const id = 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+  const today = new Date().toISOString().slice(0, 10);
+  const newItem = {
+    id, text, owner: ME,
+    meeting: meetingTag,
+    meetingDate: today,
+    status: 'open',
+    confirmedDone: false,
+    dismissed: false,
+    createdAt: new Date().toISOString(),
+    manual: true,
+  };
+
+  allItems.push(newItem);
+  save(); updateNavCounts();
+
+  fetch(`${WORKER}/item`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  }).catch(() => {});
+
+  input.value = '';
+  input.style.height = 'auto';
+  renderToday();
+}
+
 function submitQuickAdd() {
   const input = document.getElementById('kanban-quick-add-input');
   if (!input) return;
@@ -1792,12 +1834,27 @@ async function renderToday() {
             .filter(a => a && !a.toLowerCase().includes('zachhill') && a.includes('@'))
             .map(a => {
               const local = (a.split('@')[0] || '');
-              // Capitalize each word if separated, otherwise title-case the whole thing
+              // Handle dot-separated: first.last@domain
               if (local.includes('.')) {
-                return local.split('.').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                const parts = local.split('.');
+                const fi = parts[0].charAt(0).toUpperCase();
+                const ln = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1).toLowerCase() : '';
+                return ln ? `${fi}.${ln}` : fi;
               }
-              // Holley pattern: firstnamelastname — return as-is but title cased
-              return local.charAt(0).toUpperCase() + local.slice(1);
+              // CamelCase: CourtneyHill → C.Hill, BrianMcMahan → B.McMahan
+              const camelMatch = local.match(/^([A-Za-z]+?)([A-Z][a-z]+(?:[A-Z][a-z]+)*)$/);
+              if (camelMatch) {
+                const fi = camelMatch[1].charAt(0).toUpperCase();
+                const ln = camelMatch[2];
+                return `${fi}.${ln}`;
+              }
+              // All lowercase fallback: split at 3-8 chars
+              const clean = local.toLowerCase().replace(/[^a-z]/g, '');
+              let fn = clean.slice(0, 5), ln = clean.slice(5);
+              for (let i = 3; i <= Math.min(8, clean.length - 3); i++) {
+                if (clean.slice(i).length >= 3) { fn = clean.slice(0, i); ln = clean.slice(i); break; }
+              }
+              return `${fn.charAt(0).toUpperCase()}.${ln.charAt(0).toUpperCase() + ln.slice(1)}`;
             })
             .filter((n, i, arr) => n && arr.indexOf(n) === i);
 
@@ -1867,6 +1924,15 @@ async function renderToday() {
           html += `</div>`;
         }
 
+        // Quick-add for this meeting
+        const safeEvSubject = escAttr(ev.subject || '');
+        html += `<div class="kanban-quick-add" style="margin-top:8px;padding:0">
+          <div class="kanban-quick-add-form">
+            <textarea class="kanban-quick-add-input today-quick-add" data-meeting="${safeEvSubject}" placeholder="Add action item..." rows="1"></textarea>
+            <button class="kanban-quick-add-btn today-quick-add-btn" data-meeting="${safeEvSubject}">+ Add</button>
+          </div>
+        </div>`;
+
         // Completed memory — last 3 occurrences of this series, max 8 done items
         const doneMemory = allItems.filter(i =>
           done.has(i.id) &&
@@ -1909,6 +1975,23 @@ async function renderToday() {
 
   main.innerHTML = html;
   bindItemEvents();
+
+  // Bind today quick-add inputs
+  document.querySelectorAll('.today-quick-add').forEach(input => {
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 80) + 'px';
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitTodayQuickAdd(input); }
+    });
+  });
+  document.querySelectorAll('.today-quick-add-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.querySelector(`.today-quick-add[data-meeting="${btn.dataset.meeting}"]`);
+      if (input) submitTodayQuickAdd(input);
+    });
+  });
 
   // Bind expand/collapse
   document.querySelectorAll('.today-meeting-hdr[data-today-meeting]').forEach(el => {
@@ -2321,7 +2404,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '2.0.3';
+const CURRENT_VERSION = '2.0.5';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
