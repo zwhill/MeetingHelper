@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.5 · Jun 12, 2026 12:14 AM</div>
+    <div class="sidebar-footer">v1.9.6 · Jun 12, 2026 12:16 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1811,13 +1811,13 @@ async function renderToday() {
         if (evItems.length === 0) {
           html += `<div class="today-empty-items">No open items for this meeting.</div>`;
         } else {
+          // Order: mine first, then likely-done (unknown state), then others
+          const likelyItems = evItems.filter(i => likely.has(i.id) && i.owner !== ME);
+          const otherClean = otherItems.filter(i => !likely.has(i.id));
           html += `<div class="item-list">`;
-          if (mineItems.length) {
-            mineItems.forEach(i => { html += itemCard(i); });
-          }
-          if (otherItems.length) {
-            otherItems.forEach(i => { html += itemCard(i); });
-          }
+          mineItems.forEach(i => { html += itemCard(i); });
+          likelyItems.forEach(i => { html += itemCard(i); });
+          otherClean.forEach(i => { html += itemCard(i); });
           html += `</div>`;
         }
 
@@ -2275,7 +2275,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.5';
+const CURRENT_VERSION = '1.9.6';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
