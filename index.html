@@ -206,7 +206,7 @@
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; padding: 10px 14px;
     display: flex; align-items: flex-start; gap: 10px;
-    transition: border-color 0.1s;
+    transition: border-color 0.1s, opacity 0.25s, transform 0.25s;
   }
   .item:hover { border-color: var(--border2); }
   .item.mine { border-left: 3px solid var(--red); }
@@ -622,7 +622,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.7.4 · 11/06/2026</div>
+    <div class="sidebar-footer">v1.7.6 · 11/06/2026</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1037,7 +1037,7 @@ function itemCard(i) {
       ageBadge = `<span class="badge b-age${stale?' stale':''}" title="Created ${days} days ago">${days}d</span>`;
     }
   }
-  return `<div class="${cls}" ${multiselect ? `data-selectable="${i.id}"` : ''}>
+  return `<div class="${cls}" ${multiselect ? `data-selectable="${i.id}"` : `data-openable="${i.id}"`}>
     <div class="${checkCls}" data-id="${i.id}" title="${multiselect ? (isSelected?'Deselect':'Select') : (isDone?'Reopen':'Mark done')}"></div>
     <div class="item-body">
       <div class="item-text${isDone?' done':''}">${escHtml(i.text)}</div>
@@ -1233,15 +1233,13 @@ function openCardModal(id) {
       body: JSON.stringify({ confirmedDone: true }),
     }).catch(() => {});
     save(); updateNavCounts();
-    closeCardModal(id, false);
-    renderKanban();
+    closeCardModal(id, true);
   });
 
   // Trash
   document.getElementById('kmodal-trash').addEventListener('click', () => {
     trash.add(id); save(); updateNavCounts();
-    closeCardModal(id, false);
-    renderKanban();
+    closeCardModal(id, true);
   });
 }
 
@@ -1249,10 +1247,10 @@ function closeCardModal(id, rerender = true) {
   const overlay = document.getElementById('kmodal-overlay');
   if (overlay) overlay.remove();
   document.removeEventListener('keydown', kmodalEsc);
-  if (rerender) renderKanban();
+  if (rerender) render();
 }
 
-function kmodalEsc(e) { if (e.key === 'Escape') { const o = document.getElementById('kmodal-overlay'); if (o) o.remove(); document.removeEventListener('keydown', kmodalEsc); renderKanban(); } }
+function kmodalEsc(e) { if (e.key === 'Escape') { const o = document.getElementById('kmodal-overlay'); if (o) o.remove(); document.removeEventListener('keydown', kmodalEsc); render(); } }
 
 function moveCardInLane(id, dir) {
   const lane = itemLanes[id] || 'new';
@@ -1373,6 +1371,13 @@ function getDragAfterElement(container, y) {
 }
 
 function bindItemEvents() {
+  // Click item body to open modal
+  document.querySelectorAll('[data-openable]').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('.check') || e.target.closest('[data-confirm]') || e.target.closest('[data-dismiss]')) return;
+      openCardModal(el.dataset.openable);
+    });
+  });
   document.querySelectorAll('.check[data-id]').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.id;
@@ -1387,10 +1392,34 @@ function bindItemEvents() {
     });
   });
   document.querySelectorAll('[data-confirm]').forEach(el => {
-    el.addEventListener('click', e => { e.stopPropagation(); done.add(el.dataset.confirm); likely.delete(el.dataset.confirm); save(); updateNavCounts(); render(); });
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = el.dataset.confirm;
+      const card = el.closest('.item');
+      if (card && currentView === 'today') {
+        card.style.transition = 'opacity 0.25s, transform 0.25s';
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(18px)';
+        setTimeout(() => { done.add(id); likely.delete(id); save(); updateNavCounts(); render(); }, 260);
+      } else {
+        done.add(id); likely.delete(id); save(); updateNavCounts(); render();
+      }
+    });
   });
   document.querySelectorAll('[data-dismiss]').forEach(el => {
-    el.addEventListener('click', e => { e.stopPropagation(); dismissed.add(el.dataset.dismiss); likely.delete(el.dataset.dismiss); save(); updateNavCounts(); render(); });
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = el.dataset.dismiss;
+      const card = el.closest('.item');
+      if (card && currentView === 'today') {
+        card.style.transition = 'opacity 0.25s, transform 0.25s';
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(-18px)';
+        setTimeout(() => { dismissed.add(id); likely.delete(id); save(); updateNavCounts(); render(); }, 260);
+      } else {
+        dismissed.add(id); likely.delete(id); save(); updateNavCounts(); render();
+      }
+    });
   });
 }
 
@@ -1616,6 +1645,93 @@ function trashCard(i) {
   </div>`;
 }
 
+function openMeetingModal(meetingName) {
+  const sk = seriesKey(meetingName);
+  const items = allItems.filter(i => i.meeting === meetingName && !trash.has(i.id));
+  const openItems = items.filter(i => !done.has(i.id) && !dismissed.has(i.id));
+  const doneItems = items.filter(i => done.has(i.id) || dismissed.has(i.id));
+
+  // Find latest summary for this meeting
+  const summary = allSummaries.find(s => s.seriesKey === sk) ||
+    allSummaries.find(s => s.meetingName === meetingName);
+
+  const briefHtml = summary
+    ? `<div class="kmodal-brief">${escHtml(summary.summary)}</div>`
+    : `<div class="kmodal-brief empty">No meeting brief available.</div>`;
+
+  function taskRow(i) {
+    const isDone = done.has(i.id) || dismissed.has(i.id);
+    const isMe = i.owner === ME;
+    const dateLabel = i.meetingDate ? i.meetingDate.slice(5).replace('-','/') : '';
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" data-modal-item="${i.id}">
+      <div style="width:14px;height:14px;margin-top:2px;border-radius:50%;border:2px solid ${isDone?'var(--green)':'var(--border2)'};background:${isDone?'var(--green-bg)':'transparent'};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;color:${isDone?'var(--text3)':'var(--text)'};line-height:1.5;${isDone?'text-decoration:line-through':''}">${escHtml(i.text)}</div>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+          <span class="badge ${isMe?'b-me':'b-other'}">${escHtml(i.owner)}</span>
+          <span class="badge b-date">${dateLabel}</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'kmodal-overlay';
+  overlay.id = 'meeting-modal-overlay';
+  overlay.innerHTML = `
+    <div class="kmodal" id="meeting-modal" style="width:680px">
+      <div class="kmodal-hdr">
+        <div class="kmodal-hdr-left">
+          <span style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(meetingName)}</span>
+        </div>
+        <button class="kmodal-close" id="meeting-modal-close">×</button>
+      </div>
+      ${summary ? `<div class="kmodal-section">
+        <div class="kmodal-label">Latest brief · ${summary.meetingDate||''}</div>
+        ${briefHtml}
+      </div>` : ''}
+      <div class="kmodal-section">
+        <div class="kmodal-label">${openItems.length} open item${openItems.length!==1?'s':''}</div>
+        ${openItems.length ? openItems.map(taskRow).join('') : '<div style="color:var(--text3);font-size:12px;font-style:italic">No open items</div>'}
+      </div>
+      ${doneItems.length ? `<div class="kmodal-section">
+        <div class="kmodal-label">${doneItems.length} completed</div>
+        ${doneItems.map(taskRow).join('')}
+      </div>` : ''}
+      <div class="kmodal-footer">
+        <div class="kmodal-footer-left"></div>
+        <div class="kmodal-footer-right">
+          <button class="kmodal-btn" id="meeting-modal-view">View all items →</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeMeetingModal(); });
+  document.getElementById('meeting-modal-close').addEventListener('click', closeMeetingModal);
+  document.getElementById('meeting-modal-view').addEventListener('click', () => {
+    closeMeetingModal();
+    switchMeeting(meetingName, null);
+  });
+
+  // Click a task row to open card modal
+  overlay.querySelectorAll('[data-modal-item]').forEach(el => {
+    el.addEventListener('click', () => {
+      closeMeetingModal();
+      openCardModal(el.dataset.modalItem);
+    });
+  });
+
+  const escFn = e => { if (e.key === 'Escape') { closeMeetingModal(); document.removeEventListener('keydown', escFn); } };
+  document.addEventListener('keydown', escFn);
+}
+
+function closeMeetingModal() {
+  const o = document.getElementById('meeting-modal-overlay');
+  if (o) o.remove();
+}
+
 function renderMeetings() {
   const main = document.getElementById('main-content');
 
@@ -1645,7 +1761,7 @@ function renderMeetings() {
     const safeSk = m.sk.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<div class="person-row${isMuted?' muted':''}" style="${isMuted?'opacity:0.45':''}">
-      <div class="person-info" style="cursor:pointer;flex:1" onclick="switchMeeting('${safeName}', null)">
+      <div class="person-info" style="cursor:pointer;flex:1" onclick="openMeetingModal('${safeName}')">
         <div class="avatar" style="background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600">
           ${m.open > 0 ? m.open : '—'}
         </div>
