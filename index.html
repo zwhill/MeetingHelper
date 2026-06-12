@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.3 · Jun 12, 2026 12:06 AM</div>
+    <div class="sidebar-footer">v1.9.4 · Jun 12, 2026 12:11 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1638,28 +1638,9 @@ function bindItemEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation();
       const id = el.dataset.dismiss;
-      const card = el.closest('.item');
-      // "Keep open" — just remove from likely, do NOT dismiss the item
+      // "Keep open" — remove from likely only, stay visible, re-render in place
       likely.delete(id);
-      save(); updateNavCounts();
-      if (card) {
-        card.style.transition = 'opacity 0.25s, transform 0.25s, max-height 0.3s 0.2s, margin 0.3s 0.2s, padding 0.3s 0.2s';
-        card.style.opacity = '0';
-        card.style.transform = 'translateX(-18px)';
-        setTimeout(() => {
-          card.style.maxHeight = card.offsetHeight + 'px';
-          card.style.overflow = 'hidden';
-          requestAnimationFrame(() => {
-            card.style.maxHeight = '0';
-            card.style.marginBottom = '0';
-            card.style.paddingTop = '0';
-            card.style.paddingBottom = '0';
-          });
-          setTimeout(() => { card.remove(); }, 320);
-        }, 260);
-      } else {
-        render();
-      }
+      save(); updateNavCounts(); render();
     });
   });
 }
@@ -2279,7 +2260,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.3';
+const CURRENT_VERSION = '1.9.4';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
