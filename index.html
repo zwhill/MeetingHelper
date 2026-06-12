@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.1 · Jun 11, 2026 11:56 PM</div>
+    <div class="sidebar-footer">v1.9.2 · Jun 11, 2026 11:59 PM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -923,24 +923,36 @@ function updateNavCounts() {
   );
   const todayMine = open.filter(i => i.owner === ME && isTodayOrSoon(i.meetingDate, 1)).length;
   document.getElementById('nav-today').textContent = todayMine || '—';
-  document.getElementById('nav-mine').textContent = allItems.filter(i=>
-    i.owner===ME &&
+
+  document.getElementById('nav-mine').textContent = allItems.filter(i =>
+    i.owner === ME &&
     !done.has(i.id) &&
     !dismissed.has(i.id) &&
     !trash.has(i.id) &&
     !mutedMeetings.has(seriesKey(i.meeting))
-  ).length;
-  document.getElementById('nav-all').textContent = open.length;
+  ).length || '—';
+
+  document.getElementById('nav-all').textContent = open.length || '—';
+
+  // Meetings — union of items, summaries, and calendar events (matches renderMeetings)
   const meetingsEl = document.getElementById('nav-meetings');
   if (meetingsEl) {
-    const uniqueMeetings = new Set(allItems.filter(i => !done.has(i.id) && !dismissed.has(i.id)).map(i => seriesKey(i.meeting)));
-    meetingsEl.textContent = uniqueMeetings.size;
+    const skSet = new Set();
+    allItems.forEach(i => skSet.add(seriesKey(i.meeting)));
+    allSummaries.forEach(s => skSet.add(seriesKey(s.seriesKey || s.meetingName || '')));
+    calEvents.forEach(ev => { if (ev.subject) skSet.add(seriesKey(ev.subject)); });
+    skSet.delete(''); // remove empty keys
+    meetingsEl.textContent = skSet.size || '—';
   }
+
   document.getElementById('nav-likely').textContent = [...likely].filter(id => {
     const item = allItems.find(i => i.id === id);
     return !done.has(id) && !dismissed.has(id) && item && !mutedMeetings.has(seriesKey(item.meeting));
-  }).length;
-  document.getElementById('nav-done').textContent = done.size;
+  }).length || '—';
+
+  // Done — exclude trashed items
+  document.getElementById('nav-done').textContent = [...done].filter(id => !trash.has(id)).length || '—';
+
   document.getElementById('nav-trash').textContent = trash.size || '—';
 }
 
@@ -2268,7 +2280,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.1';
+const CURRENT_VERSION = '1.9.2';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
