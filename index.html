@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v2.0.6 · Jun 12, 2026 12:02 PM</div>
+    <div class="sidebar-footer">v2.0.7 · Jun 12, 2026 01:58 PM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1110,16 +1110,37 @@ function render() {
     if (!grouped[i.owner]) grouped[i.owner] = [];
     grouped[i.owner].push(i);
   });
+
+  function ownerSection(owner, ownerItems, label) {
+    const key = 'grp::' + owner;
+    const isOpen = expanded.has(key);
+    return `<div class="section-label collapsible-section" data-grp-key="${escAttr(key)}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+      <span>${label} <span style="color:var(--text3);font-size:11px;font-family:var(--mono)">${ownerItems.length}</span></span>
+      <span style="font-size:11px;color:var(--text3)">${isOpen ? '▲' : '▼'}</span>
+    </div>
+    ${isOpen ? `<div class="item-list">${ownerItems.map(itemCard).join('')}</div>` : ''}`;
+  }
+
   // Mine first
   if (grouped[ME]) {
-    html += `<div class="section-label">Yours</div><div class="item-list">${grouped[ME].map(itemCard).join('')}</div>`;
+    html += ownerSection(ME, grouped[ME], 'Yours');
     delete grouped[ME];
   }
   Object.entries(grouped).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([owner, ownerItems]) => {
-    html += `<div class="section-label">${owner}</div><div class="item-list">${ownerItems.map(itemCard).join('')}</div>`;
+    html += ownerSection(owner, ownerItems, owner);
   });
 
   main.innerHTML = html;
+
+  // Bind collapse toggles
+  document.querySelectorAll('[data-grp-key]').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.grpKey;
+      if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+      save(); render();
+    });
+  });
+
   bindItemEvents();
 }
 
@@ -2407,7 +2428,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '2.0.6';
+const CURRENT_VERSION = '2.0.7';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
