@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.8.9 · Jun 11, 2026 11:44 PM</div>
+    <div class="sidebar-footer">v1.9.0 · Jun 11, 2026 11:54 PM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -779,18 +779,22 @@ async function setLane(id, lane) {
 
 async function loadItems() {
   try {
-    const [itemsRes, statusRes, summariesRes, lanesRes] = await Promise.all([
+    const [itemsRes, statusRes, summariesRes, lanesRes, calRes] = await Promise.all([
       fetch(`${WORKER}/items`),
       fetch(`${WORKER}/status`),
       fetch(`${WORKER}/summaries`),
       fetch(`${WORKER}/lanes`),
+      fetch(`${WORKER}/calendar`),
     ]);
     allItems = await itemsRes.json();
     const status = await statusRes.json();
     allSummaries = await summariesRes.json();
     if (lanesRes.ok) {
       itemLanes = await lanesRes.json();
-      save(); // cache to localStorage
+      save();
+    }
+    if (calRes.ok) {
+      calEvents = await calRes.json();
     }
 
     // Run auto-resolve detection on loaded items
@@ -1656,21 +1660,16 @@ async function renderToday() {
   const main = document.getElementById('main-content');
   main.innerHTML = '<div class="loading"><span class="spinner"></span>Loading calendar...</div>';
 
-  // Fetch calendar events from Worker KV (populated by sync script)
-  calEvents = [];
-  try {
-    const res = await fetch(`${WORKER}/calendar`);
-    if (res.ok) calEvents = await res.json();
-  } catch(e) {
-    // Calendar fetch failed — render with action items only
-  }
+  // Use globally loaded calendar events, re-filter for today view
+  let todayCalEvents = [...calEvents];
 
   // Filter out Viva/solo blocks
   const SKIP_KEYWORDS = ['lunch','breakfast','focus time','viva insights','summer hours','no meeting'];
-  calEvents = calEvents.filter(ev => {
+  todayCalEvents = todayCalEvents.filter(ev => {
     const subj = (ev.subject||'').toLowerCase();
     if (SKIP_KEYWORDS.some(k => subj.includes(k))) return false;
     if (!ev.attendees || ev.attendees.length <= 1) return false;
+    if (mutedMeetings.has(seriesKey(ev.subject||''))) return false;
     return true;
   });
 
@@ -1685,7 +1684,7 @@ async function renderToday() {
   // Group cal events by date
   const byDate = {};
   dateLabels.forEach(d => byDate[d] = []);
-  calEvents.forEach(ev => {
+  todayCalEvents.forEach(ev => {
     const evDate = ev.start ? ev.start.slice(0,10) : null;
     if (evDate && byDate[evDate] !== undefined) byDate[evDate].push(ev);
   });
@@ -1851,7 +1850,7 @@ async function renderToday() {
   });
 
   // No calendar events at all
-  if (calEvents.length === 0) {
+  if (todayCalEvents.length === 0) {
     html += `<div class="empty">No meetings found — calendar may not be connected or no events today.</div>`;
   }
 
