@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.8 · Jun 12, 2026 09:50 AM</div></div>
+    <div class="sidebar-footer">v1.9.9 · Jun 12, 2026 09:56 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1738,7 +1738,10 @@ async function renderToday() {
         );
         const mineItems = evItems.filter(i => i.owner === ME);
         const otherItems = evItems.filter(i => i.owner !== ME);
-        const summary = allSummaries.find(s => seriesKey(s.seriesKey || s.meetingName || '') === sk);
+        const summary = allSummaries.find(s => seriesKey(s.seriesKey || '') === sk)
+          || allSummaries.find(s => seriesKey(s.meetingName || '') === sk)
+          || allSummaries.find(s => seriesKey(s.seriesKey || '') === seriesKey(ev.subject || ''))
+          || allSummaries.find(s => seriesKey(s.meetingName || '') === seriesKey(ev.subject || ''));
         const isExpanded = expanded.has('today::' + ev.id);
         const hasMine = mineItems.length > 0;
         const hasBody = ev.body && ev.body.trim().length > 0;
@@ -1769,16 +1772,23 @@ async function renderToday() {
         if (hasBody || (ev.attendees && ev.attendees.length > 0)) {
           // Extract first names from attendee emails
           const firstNames = (ev.attendees || [])
-            .filter(a => !a.includes('zachhill'))
+            .filter(a => a && !a.toLowerCase().includes('zachhill') && a.includes('@'))
             .map(a => {
-              const local = a.split('@')[0].toLowerCase();
-              // Holley pattern firstnamelastname — take chars up to where caps would be
-              // Best heuristic: take first 'word' if separated, else first 4-6 chars capitalized
-              const match = local.match(/^([a-z]{2,8}?)(?=[a-z]{2,}$)/);
-              const first = match ? match[1] : local.slice(0, 6);
-              return first.charAt(0).toUpperCase() + first.slice(1);
+              const local = (a.split('@')[0] || '').toLowerCase().replace(/[^a-z]/g, '');
+              if (local.length < 3) return null;
+              // Holley emails: firstnamelastname@holley.com
+              // Heuristic: most first names are 3-8 chars, last names 4-10
+              // Try splitting at positions 3-8 and take the shorter first chunk
+              // that results in both parts being >= 3 chars
+              let best = local.slice(0, 5); // default
+              for (let i = 3; i <= Math.min(8, local.length - 3); i++) {
+                const first = local.slice(0, i);
+                const last = local.slice(i);
+                if (last.length >= 3 && first.length >= 3) { best = first; break; }
+              }
+              return best.charAt(0).toUpperCase() + best.slice(1);
             })
-            .filter((n, i, arr) => arr.indexOf(n) === i); // dedupe
+            .filter((n, i, arr) => n && arr.indexOf(n) === i);
 
           const attendeeLine = firstNames.length > 0
             ? `<div style="font-size:11px;color:var(--text3);margin-bottom:${hasBody?'8px':'0'}">${firstNames.join(', ')}</div>`
@@ -1809,7 +1819,7 @@ async function renderToday() {
 
           // Prior context — next 2 older summaries for this series
           const priorSummaries = allSummaries
-            .filter(s => seriesKey(s.seriesKey || s.meetingName || '') === sk && s.meetingDate !== summary.meetingDate)
+            .filter(s => (seriesKey(s.seriesKey || '') === sk || seriesKey(s.meetingName || '') === sk) && s.meetingDate !== summary.meetingDate)
             .sort((a, b) => b.meetingDate.localeCompare(a.meetingDate))
             .slice(0, 2);
 
@@ -2300,7 +2310,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.8';
+const CURRENT_VERSION = '1.9.9';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
