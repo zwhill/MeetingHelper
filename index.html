@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.0 · Jun 11, 2026 11:54 PM</div>
+    <div class="sidebar-footer">v1.9.1 · Jun 11, 2026 11:56 PM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -2266,6 +2266,25 @@ function bulkAssign(owner) {
   document.getElementById('owner-picker')?.remove();
   selected.clear(); save(); updateNavCounts(); renderBulkBar(); render();
 }
+
+// ── Version poller ────────────────────────────────────────────────────────────
+const CURRENT_VERSION = '1.9.1';
+async function checkVersion() {
+  try {
+    const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (version && version !== CURRENT_VERSION && !document.getElementById('version-banner')) {
+      const banner = document.createElement('div');
+      banner.id = 'version-banner';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a1200;border-bottom:1px solid #4a3800;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#e8a020;font-family:var(--font)';
+      banner.innerHTML = `<span>⬆ New version available (v${version})</span><button onclick="location.reload(true)" style="background:#e8a020;color:#000;border:none;border-radius:5px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:600">Update now</button>`;
+      document.body.prepend(banner);
+    }
+  } catch(e) {}
+}
+checkVersion();
+setInterval(checkVersion, 60000);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 loadItems();
