@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.4 · Jun 12, 2026 12:11 AM</div>
+    <div class="sidebar-footer">v1.9.5 · Jun 12, 2026 12:14 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -1353,6 +1353,21 @@ function openCardModal(id) {
   // Lane change
   document.getElementById('kmodal-lane').addEventListener('change', e => {
     setLane(id, e.target.value);
+  });
+
+  // Text edit — save on blur
+  document.getElementById('kmodal-text').addEventListener('blur', e => {
+    const newText = e.target.value.trim();
+    if (!newText || newText === item.text) return;
+    const idx = allItems.findIndex(i => i.id === id);
+    if (idx !== -1) allItems[idx].text = newText;
+    // Persist to worker
+    fetch(`${WORKER}/item/${encodeURIComponent(id)}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: newText }),
+    }).catch(() => {});
+    save();
   });
 
   // Notes autosave
@@ -2260,7 +2275,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.4';
+const CURRENT_VERSION = '1.9.5';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
