@@ -694,7 +694,7 @@
         People <span class="nav-count"></span>
       </div>
     </div>
-    <div class="sidebar-footer">v1.9.6 · Jun 12, 2026 12:16 AM</div>
+    <div class="sidebar-footer">v1.9.7 · Jun 12, 2026 12:18 AM</div>
   </nav>
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -717,6 +717,7 @@ const S = {
   lanes: 'ai_lanes_v1',
   laneOrder: 'ai_lane_order_v1',
   neverExpanded: 'ai_never_expanded_v1',
+  keptOpen: 'ai_kept_open_v1',
 };
 
 let allItems = [];
@@ -743,6 +744,7 @@ const expanded = new Set(JSON.parse(localStorage.getItem(S.expanded)||'[]'));
 let itemLanes = JSON.parse(localStorage.getItem(S.lanes)||'{}');
 let laneOrder = JSON.parse(localStorage.getItem(S.laneOrder)||'{}'); // { laneKey: [id, id, ...] }
 let neverExpanded = localStorage.getItem(S.neverExpanded) === 'true';
+const keptOpen = new Set(JSON.parse(localStorage.getItem(S.keptOpen)||'[]'));
 
 function save() {
   try {
@@ -756,6 +758,7 @@ function save() {
     localStorage.setItem(S.lanes, JSON.stringify(itemLanes));
     localStorage.setItem(S.laneOrder, JSON.stringify(laneOrder));
     localStorage.setItem(S.neverExpanded, String(neverExpanded));
+    localStorage.setItem(S.keptOpen, JSON.stringify([...keptOpen]));
   } catch(e) {}
 }
 
@@ -852,7 +855,7 @@ function detectAutoResolves() {
           const inter = [...ow].filter(w => nw.has(w)).length;
           return inter / Math.max(new Set([...ow,...nw]).size, 1) > 0.35;
         });
-        if (!reRaised && !likely.has(older.id)) {
+        if (!reRaised && !likely.has(older.id) && !keptOpen.has(older.id)) {
           likely.add(older.id);
         }
       }
@@ -1653,8 +1656,9 @@ function bindItemEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation();
       const id = el.dataset.dismiss;
-      // "Keep open" — remove from likely only, stay visible, re-render in place
+      // "Keep open" — remove from likely, add to keptOpen so it won't be re-flagged
       likely.delete(id);
+      keptOpen.add(id);
       save(); updateNavCounts(); render();
     });
   });
@@ -2275,7 +2279,7 @@ function bulkAssign(owner) {
 }
 
 // ── Version poller ────────────────────────────────────────────────────────────
-const CURRENT_VERSION = '1.9.6';
+const CURRENT_VERSION = '1.9.7';
 async function checkVersion() {
   try {
     const res = await fetch(`/MeetingHelper/version.json?_=${Date.now()}`);
